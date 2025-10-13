@@ -1,0 +1,14 @@
+artifact_uri: mlruns/893669967940680367/a1dbb68533fc49b69ad2d3dda36751eb/artifacts
+end_time: 1759992150601
+entry_point_name: ''
+experiment_id: '893669967940680367'
+lifecycle_stage: active
+run_id: a1dbb68533fc49b69ad2d3dda36751eb
+run_name: 'Model training: transfer-microservice-set'
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759992085353
+status: 3
+tags: []
+user_id: your_username

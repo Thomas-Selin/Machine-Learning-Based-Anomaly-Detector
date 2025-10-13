@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Remove the content in the output folder",
+            "type": "shell",
+            "command": "rm -rf output/*",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": false,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "detail": "This tasks removes the content in the output folder, like collected metrics, created model and generated result plot."
+        }
+    ]
+}

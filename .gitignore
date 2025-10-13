@@ -1,0 +1,16 @@
+# Python cache files
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Directories
+.venv/
+.local/
+
+# OS files
+.DS_Store
+
+# Vars
+.env

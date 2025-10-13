@@ -1,0 +1,53 @@
+{
+     "version": "0.2.0",
+     "configurations": [
+          {
+               "name": "Use already downloaded data (standard)",
+               "type": "debugpy",
+               "request": "launch",
+               "program": "${workspaceFolder}/src/ml_monitoring_service/main.py",
+               "console": "integratedTerminal",
+               "windows": {},
+               "justMyCode": false,
+               "env": {
+                    "DOWNLOAD": "false",
+               }
+          },
+          {
+               "name": "Remove output & use only subset of datapoints",
+               "preLaunchTask": "Remove the content in the output folder",
+               "type": "debugpy",
+               "request": "launch",
+               "program": "${workspaceFolder}/src/ml_monitoring_service/main.py",
+               "console": "integratedTerminal",
+               "windows": {},
+               "justMyCode": false,
+               "env": {
+                    "SUBSET": "280",
+               }
+          },
+          {
+               "name": "Remove output & use only a fraction of datapoints",
+               "preLaunchTask": "Remove the content in the output folder",
+               "type": "debugpy",
+               "request": "launch",
+               "program": "${workspaceFolder}/src/ml_monitoring_service/main.py",
+               "console": "integratedTerminal",
+               "windows": {},
+               "justMyCode": false,
+               "env": {
+                    "SAMPLING": "0.15", 
+               }
+          },
+          {
+               "name": "Remove output & run standard",
+               "preLaunchTask": "Remove the content in the output folder",
+               "type": "debugpy",
+               "request": "launch",
+               "program": "${workspaceFolder}/src/ml_monitoring_service/main.py",
+               "console": "integratedTerminal",
+               "justMyCode": false,
+               "windows": {},
+          }
+     ]
+}

@@ -1,0 +1,18 @@
+service_sets:
+
+  # A set of microservices which to train a model on and inference the created model
+  transfer:
+    relationships:
+      mobile-bff:
+        - transfer-service
+      transfer-service:
+        - transfer-validation-service
+    metrics:
+      - cpu
+      - memory
+      - latency
+      # - transfer_count
+    training_lookback_hours: 3
+    inference_lookback_minutes: 20
+    window_size: 10
+    anomaly_threshold_percentile: 86

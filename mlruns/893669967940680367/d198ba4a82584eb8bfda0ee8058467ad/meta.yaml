@@ -1,0 +1,14 @@
+artifact_uri: mlruns/893669967940680367/d198ba4a82584eb8bfda0ee8058467ad/artifacts
+end_time: 1759992271466
+entry_point_name: ''
+experiment_id: '893669967940680367'
+lifecycle_stage: active
+run_id: d198ba4a82584eb8bfda0ee8058467ad
+run_name: 'Model inference: transfer-microservice-set'
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759992264908
+status: 3
+tags: []
+user_id: your_username
