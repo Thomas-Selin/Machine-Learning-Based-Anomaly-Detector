@@ -2,7 +2,7 @@
 
 ### Developed by Thomas Selin
 
-This service looks for unusual behaviour in sets of interacting microservices by learning from observability data (for example nr. of errors, memory usage, latency, nr. of calls to api:s) what normal behaviour looks like. 
+This service looks for unusual behaviour in sets of interacting micro-services by learning from observability data (for example nr. of errors, memory usage, latency, nr. of calls to api:s) what normal behaviour looks like. 
 
 It learns what normal looks like by training a hybrid autoencoder/transformer type machine learning model.
 
