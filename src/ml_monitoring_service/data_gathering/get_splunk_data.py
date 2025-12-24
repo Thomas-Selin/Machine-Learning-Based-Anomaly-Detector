@@ -3,7 +3,6 @@ import time
 import logging
 import urllib3
 import json
-import os
 import ml_monitoring_service.configuration as conf
 from pathlib import Path
 from datetime import datetime
@@ -36,18 +35,6 @@ def _get_auth_headers() -> Dict[str, str]:
         "Authorization": f"Bearer {SPLUNK_AUTH_TOKEN}",
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json"
-    }
-
-def _get_hec_headers() -> Dict[str, str]:
-    """
-    Get HEC (HTTP Event Collector) headers with the current SPLUNK_HEC_TOKEN from environment.
-    
-    Returns:
-        Dictionary of HTTP headers for Splunk HEC requests
-    """
-    return {
-        "Authorization": f"Splunk {SPLUNK_HEC_TOKEN}",
-        "Content-Type": "application/json"
     }
 
 def check_authentication() -> bool:
