@@ -78,8 +78,17 @@ poetry run ./main.sh
 6. To run tests, start MLflow by running `poetry run mlflow server`, then run the terminal command `poetry run pytest` from the repo root folder.
 7. After the service has analysed a timerange for any anomalies, a graph is created in the `output` folder for each microservice set that shows which service had the most unusual/anomalous behaviour. See below examples.
 
-8. **Threshold recalculation on inference:** By default, inference uses the anomaly threshold persisted from training/validation. This is the safest default because it avoids "contaminating" the threshold with anomalous data.
-	If you explicitly want to recompute the threshold from the current inference dataset (useful for experiments or strong drift scenarios), set `RECALCULATE_THRESHOLD_ON_INFERENCE=true`. Use with care: if the inference window contains true anomalies, recalculation can raise the threshold and reduce sensitivity.
+### Threshold behavior
+
+By default, inference uses the anomaly threshold persisted from training/validation.
+
+This is off-by-default for production safety:
+
+- **Contamination risk:** If you recompute the threshold on the same inference window you are trying to detect anomalies in, true anomalies can raise the threshold and become harder to detect.
+- **Stability:** A persisted threshold makes anomaly rates more comparable over time and less sensitive to short-term variance.
+
+If you explicitly want to recompute the threshold from the current inference dataset (useful for experiments or strong drift scenarios), set `RECALCULATE_THRESHOLD_ON_INFERENCE=true`.
+Use with care and prefer recalculating on a trusted “baseline” window (known-good traffic) rather than during an incident.
 
 <table>
 <tr>
