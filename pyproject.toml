@@ -11,7 +11,7 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 python-dotenv = "^1.1.1"
-python = ">=3.12,<3.13"
+python = ">=3.12,<3.14"
 numpy = "^1.26.0"
 pandas = "^2.2.3"
 torch-geometric = "^2.6.1"
