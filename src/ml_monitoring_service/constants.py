@@ -84,6 +84,11 @@ DEFAULT_TRAINING_INTERVAL_MINUTES = 45
 
 # Request timeout for external API calls (in seconds)
 REQUEST_TIMEOUT = 10
+
+# Whether requests should verify TLS certificates (recommended true in production).
+# Set REQUESTS_VERIFY=false for local testing with self-signed certs.
+REQUESTS_VERIFY = os.getenv('REQUESTS_VERIFY', 'true').lower() != 'false'
+
 # Recompute anomaly threshold from inference data (not recommended by default).
 RECALCULATE_THRESHOLD_ON_INFERENCE = os.getenv('RECALCULATE_THRESHOLD_ON_INFERENCE', 'false').lower() == 'true'
 

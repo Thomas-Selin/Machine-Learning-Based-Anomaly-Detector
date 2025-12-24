@@ -9,9 +9,11 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from ml_monitoring_service.constants import SPLUNK_URL, SPLUNK_AUTH_TOKEN, SPLUNK_HEC_TOKEN, DATA_SUBSET, DATA_SAMPLING
+from ml_monitoring_service.constants import REQUESTS_VERIFY
 
-# Disable SSL warnings if using a self-signed certificate
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# Disable SSL warnings only if TLS verification is disabled (dev/local).
+if not REQUESTS_VERIFY:
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -53,7 +55,7 @@ def check_authentication() -> bool:
         response = requests.get(
             f"{SPLUNK_URL}/services/authentication/current-context?output_mode=json",
             headers=_get_auth_headers(),
-            verify=False,
+            verify=REQUESTS_VERIFY,
             timeout=30
         )
         if response.status_code == 200:
@@ -88,7 +90,7 @@ def start_search(search_query: str) -> Optional[str]:
             f"{SPLUNK_URL}/services/search/jobs?output_mode=json",
             headers=_get_auth_headers(),
             data=data,
-            verify=False,
+            verify=REQUESTS_VERIFY,
             timeout=30
         )
         logger.debug(f"Search started, status code: {response.status_code}")
@@ -160,7 +162,7 @@ def get_search_results(job_id: str) -> Optional[List[Dict[str, Any]]]:
                 response = requests.get(
                     f"{SPLUNK_URL}/services/search/jobs/{job_id}?output_mode=json",
                     headers=_get_auth_headers(),
-                    verify=False,
+                    verify=REQUESTS_VERIFY,
                     timeout=30
                 )
                 response.raise_for_status()
@@ -204,7 +206,7 @@ def get_search_results(job_id: str) -> Optional[List[Dict[str, Any]]]:
             f"{SPLUNK_URL}/services/search/jobs/{job_id}/results",
             headers=_get_auth_headers(),
             params=request_data,
-            verify=False,
+            verify=REQUESTS_VERIFY,
             timeout=300
         )
         response.raise_for_status()
@@ -252,7 +254,7 @@ def delete_search_job(job_id: str) -> bool:
         response = requests.delete(
             f"{SPLUNK_URL}/services/search/jobs/{job_id}?output_mode=json",
             headers=_get_auth_headers(),
-            verify=False,
+            verify=REQUESTS_VERIFY,
             timeout=30
         )
         if response.status_code == 200:
@@ -281,7 +283,7 @@ def cleanup_all_search_jobs() -> int:
         user_response = requests.get(
             f"{SPLUNK_URL}/services/authentication/current-context?output_mode=json",
             headers=_get_auth_headers(),
-            verify=False,
+            verify=REQUESTS_VERIFY,
             timeout=30
         )
         
@@ -303,7 +305,7 @@ def cleanup_all_search_jobs() -> int:
             response = requests.get(
                 f"{SPLUNK_URL}/services/search/jobs?output_mode=json&username={username}",
                 headers=_get_auth_headers(),
-                verify=False,
+                verify=REQUESTS_VERIFY,
                 timeout=30
             )
             

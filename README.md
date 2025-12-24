@@ -62,6 +62,8 @@ Either use the VSCode launch configurations, normally the config called `Use alr
 
 > **Note 2:** If you encounter SSL-certificate issues while downloading data from Splunk or Prometheus, consider setting the `CURL_CA_BUNDLE`, `SSL_CERT_FILE`, and `REQUESTS_CA_BUNDLE` environment variables to point to your certificate file. These can be configured in the `main.sh` file, the `.env` file, or the VSCode launch configuration (`.vscode/launch.json`).
 
+> **Note 3 (recommended):** By default the service verifies TLS certificates for Splunk/Prometheus requests. If you are using self-signed certs in local/dev you can set `REQUESTS_VERIFY=false` in your `.env` file.
+
 ```sh
 poetry run ./main.sh
 ```
