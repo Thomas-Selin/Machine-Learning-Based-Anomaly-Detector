@@ -1,6 +1,7 @@
 import pytest
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
 from ml_monitoring_service.data_handling import convert_to_model_input, get_microservice_data_from_file
+from ml_monitoring_service.data_handling import get_ordered_timepoints
 from ml_monitoring_service.anomaly_analyser import analyse_anomalies
 from ml_monitoring_service.configuration import ConfigLoader, ServiceSetConfig
 

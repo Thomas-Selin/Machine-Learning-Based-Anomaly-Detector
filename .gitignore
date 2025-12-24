@@ -14,3 +14,7 @@ coverage.xml
 
 # Vars
 .env
+
+# Runtime artifacts
+output/
+mlruns/

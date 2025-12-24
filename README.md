@@ -87,3 +87,9 @@ poetry run ./main.sh
 <td><img src="src/ml_monitoring_service/resources/example_result_graph_small.png" alt="Example error visualization - Service set containing 3 microservices" width="500"/></td>
 </tr>
 </table>
+
+
+## Future work / Possible improvements
+
+- Run training + inference in separate deployment units, for example using K8S CronJobs for training at regular intervals and a service deployment for inferencing.
+- Write models and other artifacts to a central storage location for easier management and deployment, for example MLflow Model Registry.
