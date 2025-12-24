@@ -8,6 +8,7 @@ import mlflow
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, Response
 from apscheduler.schedulers.background import BackgroundScheduler
+from waitress import serve
 
 # Load environment variables BEFORE importing any modules that use them
 from dotenv import find_dotenv, load_dotenv
@@ -324,7 +325,8 @@ if __name__ == '__main__':
     scheduler.start()
     
     try:
-        flask_app.run(host='0.0.0.0', port=8080) # You can add debug=True for local testing
+        logger.info("Starting production WSGI server on 0.0.0.0:8080")
+        serve(flask_app, host='0.0.0.0', port=8080)
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
     logger.info("App stopped running")
