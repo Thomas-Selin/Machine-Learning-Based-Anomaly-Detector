@@ -3912,7 +3912,6 @@ description = "Waitress WSGI server"
 optional = false
 python-versions = ">=3.9.0"
 groups = ["main"]
-markers = "platform_system == \"Windows\""
 files = [
     {file = "waitress-3.0.2-py3-none-any.whl", hash = "sha256:c56d67fd6e87c2ee598b76abdd4e96cfad1f24cacdea5078d382b1f9d7b5ed2e"},
     {file = "waitress-3.0.2.tar.gz", hash = "sha256:682aaaf2af0c44ada4abfb70ded36393f0e307f4ab9456a215ce0020baefc31f"},
@@ -4108,4 +4107,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "69c0bdd6d52006d0196d1d9e40fe048aeb98472b97877195ae1d66ad97142b34"
+content-hash = "35172a74d8cee66d0ad980ce20fc14e22b4d228162591626998e9cf2d44abe1d"
