@@ -43,34 +43,27 @@ In MLflow, you can see how the model training and inference progressed, such as 
 poetry install
 ```
 
-#### 2. Activate virtual environment
-
-```sh
-. .venv/bin/activate
-```
-
-#### 3. Set env vars
+#### 2. Set env vars
 
 Create a copy of the `.env.example` file and rename it to `.env` and fill in your environment variables.
 
-#### 4. Start mlflow-server
-
-Start MLflow server for visualizations and model training monitoring. Run below command a in separate shell/terminal window (NOTE: you need to activate the virtual environment first).
+#### 3. OPTIONAL: Start mlflow-server
+Optionally start MLflow server for visualizations and model training monitoring. Run below command a in separate shell/terminal window (NOTE: you need to activate the virtual environment first).
 
 ```sh
-mlflow server
+poetry run mlflow server
 ```
 
-#### 5. Run application (both continuous training/re-training and inferencing)
+#### 4. Run application (both continuous training/re-training and inferencing)
 
 Either use the VSCode launch configurations, normally the config called `Use already downloaded data`, or run the `main.sh` from the repo root folder as below.
 
-> **Note 1:** To test building and inferencing the model with provided sample data, set the `DOWNLOAD=false` environment variable as shown below or in the `.env` file. Remove this note if you have access to a Splunk and Prometheus instance and want to use your own data.
+> **Note 1:** To test building and inferencing the model with provided sample data, set the `DOWNLOAD=false` environment variable as shown below or in the `.env` file. Set `DOWNLOAD=true` if you have access to a Splunk and Prometheus instance and want to use your own data.
 
 > **Note 2:** If you encounter SSL-certificate issues while downloading data from Splunk or Prometheus, consider setting the `CURL_CA_BUNDLE`, `SSL_CERT_FILE`, and `REQUESTS_CA_BUNDLE` environment variables to point to your certificate file. These can be configured in the `main.sh` file, the `.env` file, or the VSCode launch configuration (`.vscode/launch.json`).
 
 ```sh
-DOWNLOAD=false ./main.sh
+poetry run ./main.sh
 ```
 
 ## Good to know
@@ -80,7 +73,7 @@ DOWNLOAD=false ./main.sh
 3. The model will work best if it is trained on normal data. If the training data contains a lot of anomalous data, the model will learn that as normal behaviour and will not be able to detect similiar anomalies. So either pause the service or adjust the training data timerange to a time when you know the system was working well. Future plans for this project includes adding logic that automatically pauses training if too many anomalies are present in the training data.
 4. Setting ``DOWNLOAD`` env. variable to ``false`` will skip downloading (and combining) Splunk and Prometheus data. This can be benificial if you are developing or testing other parts than the downloading/combining logic and already have downloaded the data once. This way you can save some time. There is a prepared launch config (in ``.vscode/launch.json``) called ``Use already downloaded data (standard)`` that can be used in VSCode. Other launch configs are also available for using sampling or a subset of the data.
 5. While developing and as default, the model training is configured to only train for a low number of epochs. To create a better fitted model, increase `MAX_EPOCHS` in `constans.py` to a higher number, for example `100`. This will ensure the models will be trainend until a loss platue is reached.
-6. To run tests, start MLflow by running `mlflow server`, then run the terminal command `pytest` from the repo root folder.
+6. To run tests, start MLflow by running `poetry run mlflow server`, then run the terminal command `poetry run pytest` from the repo root folder.
 7. After the service has analysed a timerange for any anomalies, a graph is created in the `output` folder for each microservice set that shows which service had the most unusual/anomalous behaviour. See below examples.
 
 <table>
