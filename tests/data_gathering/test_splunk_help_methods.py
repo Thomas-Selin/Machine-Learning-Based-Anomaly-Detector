@@ -1,21 +1,27 @@
-import pytest
 import json
+from unittest.mock import MagicMock, patch
+
+import pytest
 import requests
-from unittest.mock import patch, MagicMock
+
 from ml_monitoring_service.data_gathering import get_splunk_data
 
 
 @pytest.fixture
 def mock_requests():
     """Mock requests library for testing"""
-    with patch('ml_monitoring_service.data_gathering.get_splunk_data.requests') as mock_req:
+    with patch(
+        "ml_monitoring_service.data_gathering.get_splunk_data.requests"
+    ) as mock_req:
         yield mock_req
 
 
 @pytest.fixture
 def mock_time():
     """Mock time.sleep to avoid delays in tests"""
-    with patch('ml_monitoring_service.data_gathering.get_splunk_data.time') as mock_time:
+    with patch(
+        "ml_monitoring_service.data_gathering.get_splunk_data.time"
+    ) as mock_time:
         yield mock_time
 
 
@@ -87,7 +93,10 @@ class TestCleanupAllSearchJobs:
             "entry": [
                 {"content": {"sid": "job1"}, "author": "test_user"},
                 {"content": {"sid": "job2"}, "author": "test_user"},
-                {"content": {"sid": "job3"}, "author": "other_user"}  # Should be skipped
+                {
+                    "content": {"sid": "job3"},
+                    "author": "other_user",
+                },  # Should be skipped
             ]
         }
 

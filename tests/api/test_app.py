@@ -1,11 +1,11 @@
 import pytest
-from flask import url_for, Flask
+from flask import Flask, url_for
 from flask.testing import FlaskClient
 
 from ml_monitoring_service.main import create_app
 
-class TestApp:
 
+class TestApp:
     @pytest.fixture()
     def app(self) -> Flask:
         app = create_app()
@@ -25,7 +25,7 @@ class TestApp:
 
     def test_app_runs(self):
         app = create_app()
-        app.config['SERVER_NAME'] = 'localhost'
+        app.config["SERVER_NAME"] = "localhost"
         with app.test_client() as client:
             with app.app_context():
                 res = client.get(url_for("health"))

@@ -1,11 +1,12 @@
+import copy
 import logging
+from contextlib import nullcontext
+
+import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import numpy as np
-import copy
-from contextlib import nullcontext
 
 import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.data_handling import ServiceMetricsDataset
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class AnomalyDetector:
     """Anomaly detector for microservice metrics using transformer-based autoencoder
-    
+
     Attributes:
         num_services: Number of microservices to monitor
         num_features: Number of features per service
@@ -26,24 +27,19 @@ class AnomalyDetector:
         model: The transformer-based autoencoder model
         threshold: Anomaly detection threshold
     """
-    def __init__(
-        self, 
-        num_services, 
-        num_features, 
-        window_size,
-        config=None
-    ):
+
+    def __init__(self, num_services, num_features, window_size, config=None):
         self.num_services = num_services
         self.num_features = num_features
         self.window_size = window_size
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = HybridAutoencoderTransformerModel(
-            num_services=num_services, 
-            num_features=num_features, 
+            num_services=num_services,
+            num_features=num_features,
         ).to(self.device)
         self.threshold = None
-        
+
         logger.info(f"Initialized AnomalyDetector on device: {self.device}")
 
     def train(
@@ -58,7 +54,7 @@ class AnomalyDetector:
         patience=15,
     ):
         """Train the model on normal data with early stopping and learning rate reduction
-        
+
         Args:
             train_data: Training data array
             val_data: Validation data array
@@ -71,20 +67,26 @@ class AnomalyDetector:
         # Check if datasets are large enough
         min_samples = max(self.window_size + 1, batch_size)
         if len(train_data) <= min_samples:
-            logger.error(f"Training data too small ({len(train_data)} samples) for window_size={self.window_size} and batch_size={batch_size}")
+            logger.error(
+                f"Training data too small ({len(train_data)} samples) for window_size={self.window_size} and batch_size={batch_size}"
+            )
             return
-            
+
         if len(val_data) <= self.window_size:
-            logger.error(f"Validation data too small ({len(val_data)} samples) for window_size={self.window_size}")
+            logger.error(
+                f"Validation data too small ({len(val_data)} samples) for window_size={self.window_size}"
+            )
             return
-        
-        logger.info(f"Training with {len(train_data)} training samples and {len(val_data)} validation samples")
-        
+
+        logger.info(
+            f"Training with {len(train_data)} training samples and {len(val_data)} validation samples"
+        )
+
         # Import here to avoid circular dependency
         import mlflow
+
         from ml_monitoring_service.visualisation import save_data_to_mlflow
-        
-        
+
         # Enable MLflow autologging
         mlflow.pytorch.autolog()
 
@@ -117,12 +119,16 @@ class AnomalyDetector:
             if mlflow.active_run():
                 mlflow.log_artifact(train_data_path, artifact_path="data")
                 mlflow.log_artifact(val_data_path, artifact_path="data")
-                logger.info("Successfully logged training and validation data to MLflow")
+                logger.info(
+                    "Successfully logged training and validation data to MLflow"
+                )
 
                 # Also save service names for reference
                 with open(f"output/{active_set}/service_names.txt", "w") as f:
                     f.write("\n".join(conf.get_services(active_set)))
-                mlflow.log_artifact(f"output/{active_set}/service_names.txt", artifact_path="data")
+                mlflow.log_artifact(
+                    f"output/{active_set}/service_names.txt", artifact_path="data"
+                )
 
             # Align timestamps to the model time axis (unique ordered timepoints)
             train_size = len(train_data)
@@ -133,22 +139,28 @@ class AnomalyDetector:
                 )
 
             train_timestamps = timepoints[:train_size]
-            val_timestamps = timepoints[train_size:train_size + val_size]
+            val_timestamps = timepoints[train_size : train_size + val_size]
 
-            dataset = ServiceMetricsDataset(train_data, train_timestamps, self.window_size)
+            dataset = ServiceMetricsDataset(
+                train_data, train_timestamps, self.window_size
+            )
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-            val_dataset = ServiceMetricsDataset(val_data, val_timestamps, self.window_size)
+            val_dataset = ServiceMetricsDataset(
+                val_data, val_timestamps, self.window_size
+            )
             val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
-            
+
             optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
             criterion = nn.MSELoss()
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=patience)
-            
-            best_loss = float('inf')
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min", factor=0.5, patience=patience
+            )
+
+            best_loss = float("inf")
             patience_counter = 0
             best_model_state = None
-            
+
             self.model.train()
             for epoch in range(max_epochs):
                 total_loss = 0
@@ -160,31 +172,37 @@ class AnomalyDetector:
                     loss = criterion(output, batch_y)
                     loss.backward()
                     # Clip gradients to prevent exploding gradients
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), max_norm=1.0
+                    )
                     optimizer.step()
                     total_loss += loss.item()
-                
+
                 avg_train_loss = total_loss / len(dataloader)
-                
+
                 # Validation loss
                 self.model.eval()
                 val_loss = 0
                 with torch.no_grad():
                     for batch_x, batch_y, batch_timestamps in val_dataloader:
-                        batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
+                        batch_x, batch_y = (
+                            batch_x.to(self.device),
+                            batch_y.to(self.device),
+                        )
                         output = self.model(batch_x, batch_timestamps)
                         loss = criterion(output, batch_y)
                         val_loss += loss.item()
                 avg_val_loss = val_loss / len(val_dataloader)
-                
+
                 # Log metrics manually in case autolog misses something
-                mlflow.log_metrics({
-                    "train_loss": avg_train_loss,
-                    "val_loss": avg_val_loss
-                }, step=epoch)
-                
-                logger.info(f"Epoch {epoch+1}, Train Loss: {avg_train_loss:.6f}, Val Loss: {avg_val_loss:.6f}")
-                
+                mlflow.log_metrics(
+                    {"train_loss": avg_train_loss, "val_loss": avg_val_loss}, step=epoch
+                )
+
+                logger.info(
+                    f"Epoch {epoch + 1}, Train Loss: {avg_train_loss:.6f}, Val Loss: {avg_val_loss:.6f}"
+                )
+
                 # Check for early stopping
                 if avg_val_loss < best_loss:
                     best_loss = avg_val_loss
@@ -198,28 +216,33 @@ class AnomalyDetector:
                     if patience_counter >= patience:
                         logger.info("Early stopping triggered")
                         break
-                
+
                 # Step the scheduler
                 scheduler.step(avg_val_loss)
-            
+
             # Load best model state after training
             if best_model_state is not None:
                 self.model.load_state_dict(best_model_state)
                 logger.info(f"Loaded best model with validation loss: {best_loss:.6f}")
-                
+
                 # Set threshold before saving (use aligned timepoints for correct time features)
                 self.set_threshold(val_data, timepoints=val_timestamps)
-                
+
                 # Save the best model to disk with threshold
-                model_path = f'output/{active_set}/best_model_{active_set}.pth'
-                torch.save({
-                    'model_state_dict': best_model_state,
-                    'threshold': self.threshold,
-                    'num_services': self.num_services,
-                    'num_features': self.num_features,
-                    'window_size': self.window_size
-                }, model_path)
-                logger.info(f"Best model saved to {model_path} with threshold: {self.threshold:.6f}")
+                model_path = f"output/{active_set}/best_model_{active_set}.pth"
+                torch.save(
+                    {
+                        "model_state_dict": best_model_state,
+                        "threshold": self.threshold,
+                        "num_services": self.num_services,
+                        "num_features": self.num_features,
+                        "window_size": self.window_size,
+                    },
+                    model_path,
+                )
+                logger.info(
+                    f"Best model saved to {model_path} with threshold: {self.threshold:.6f}"
+                )
 
             # Log the threshold
             self.set_threshold(val_data, timepoints=val_timestamps)
@@ -236,20 +259,25 @@ class AnomalyDetector:
         elif df is not None:
             # Best-effort fallback: derive from df's ordered unique timepoints
             from ml_monitoring_service.data_handling import get_ordered_timepoints
+
             ordered = get_ordered_timepoints(df)
-            val_timestamps = pd.to_datetime(ordered[:len(validation_data)]).to_numpy()
+            val_timestamps = pd.to_datetime(ordered[: len(validation_data)]).to_numpy()
         else:
             # Fallback to generating synthetic timestamps
-            logger.warning("No timestamps provided for thresholding; using synthetic timestamps")
+            logger.warning(
+                "No timestamps provided for thresholding; using synthetic timestamps"
+            )
             val_timestamps = pd.date_range(
-                start=pd.Timestamp('2025-03-27'),
+                start=pd.Timestamp("2025-03-27"),
                 periods=len(validation_data),
-                freq='1min'
+                freq="1min",
             ).values
 
-        dataset = ServiceMetricsDataset(validation_data, val_timestamps, self.window_size)
+        dataset = ServiceMetricsDataset(
+            validation_data, val_timestamps, self.window_size
+        )
         dataloader = DataLoader(dataset, batch_size=32)
-        
+
         reconstruction_errors = []
         with torch.no_grad():
             for batch_x, _, batch_timestamps in dataloader:  # Unpack 3 values
@@ -257,43 +285,62 @@ class AnomalyDetector:
                 output = self.model(batch_x, batch_timestamps)  # Pass timestamps
                 error = torch.mean((batch_x - output) ** 2, dim=(2, 3))
                 reconstruction_errors.extend(error.cpu().numpy())
-        
+
         self.threshold = np.percentile(reconstruction_errors, percentile)
-    
+
     def detect(self, metrics_window, timestamp):
         """Detect anomalies in current metrics window"""
         self.model.eval()
         with torch.no_grad():
             x = torch.FloatTensor(metrics_window).unsqueeze(0).to(self.device)
-            
+
             # Generate time features from the window timestamps
             # First, create a sequence of timestamps by adding time offsets to the base timestamp
-            timestamps = [pd.to_datetime(timestamp) + pd.Timedelta(minutes=i) for i in range(self.window_size)]
-            
+            timestamps = [
+                pd.to_datetime(timestamp) + pd.Timedelta(minutes=i)
+                for i in range(self.window_size)
+            ]
+
             # Extract time features (hours, minutes, day_of_the_week, seconds)
-            hours = torch.tensor([ts.hour / 24.0 for ts in timestamps]).float().unsqueeze(1)
-            minutes = torch.tensor([ts.minute / 60.0 for ts in timestamps]).float().unsqueeze(1)
-            days = torch.tensor([ts.dayofweek / 7.0 for ts in timestamps]).float().unsqueeze(1)
-            seconds = torch.tensor([ts.second / 60.0 for ts in timestamps]).float().unsqueeze(1)
-            
+            hours = (
+                torch.tensor([ts.hour / 24.0 for ts in timestamps]).float().unsqueeze(1)
+            )
+            minutes = (
+                torch.tensor([ts.minute / 60.0 for ts in timestamps])
+                .float()
+                .unsqueeze(1)
+            )
+            days = (
+                torch.tensor([ts.dayofweek / 7.0 for ts in timestamps])
+                .float()
+                .unsqueeze(1)
+            )
+            seconds = (
+                torch.tensor([ts.second / 60.0 for ts in timestamps])
+                .float()
+                .unsqueeze(1)
+            )
+
             # Stack time features [seq_len, 4] and add batch dimension
-            time_features = torch.cat([hours, minutes, days, seconds], dim=1).unsqueeze(0)
-            
+            time_features = torch.cat([hours, minutes, days, seconds], dim=1).unsqueeze(
+                0
+            )
+
             # Now pass both x and time_features to the model
             output = self.model(x, time_features)
-            
+
             # Rest of the method remains the same
             error = torch.mean((x - output) ** 2, dim=(2, 3))
             error_scalar = torch.mean(error).item()
             service_errors = torch.mean((x - output) ** 2, dim=(0, 1, 3)).cpu().numpy()
             variable_errors = torch.mean((x - output) ** 2, dim=(0, 1, 2)).cpu().numpy()
             is_anomaly = error_scalar > self.threshold
-            
+
             return {
-                'is_anomaly': bool(is_anomaly),
-                'error_score': error_scalar,
-                'threshold': self.threshold,
-                'service_errors': service_errors,
-                'variable_errors': variable_errors,
-                'timestamp': timestamp
+                "is_anomaly": bool(is_anomaly),
+                "error_score": error_scalar,
+                "threshold": self.threshold,
+                "service_errors": service_errors,
+                "variable_errors": variable_errors,
+                "timestamp": timestamp,
             }

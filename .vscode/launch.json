@@ -36,7 +36,7 @@
                "windows": {},
                "justMyCode": false,
                "env": {
-                    "SAMPLING": "0.15", 
+                    "SAMPLING": "0.15",
                }
           },
           {

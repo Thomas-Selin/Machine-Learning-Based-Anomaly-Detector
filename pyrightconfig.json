@@ -1,0 +1,11 @@
+{
+  "include": ["src"],
+  "exclude": ["**/mlruns", "**/output"],
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownParameterType": "none",
+  "pythonVersion": "3.12"
+}

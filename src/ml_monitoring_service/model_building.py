@@ -1,35 +1,37 @@
 import logging
-import torch
-from datetime import datetime
-from typing import Optional
-import mlflow
 import os
+from datetime import datetime
+
+import mlflow
 
 import ml_monitoring_service.configuration as conf
-from ml_monitoring_service.data_handling import (
-    check_for_nan, get_timestamp_of_latest_data, get_microservice_data_from_file, 
-    convert_to_model_input,
-    get_ordered_timepoints,
-)
-from ml_monitoring_service.data_gathering.get_prometheus_data import main as download_prometheus_data
-from ml_monitoring_service.data_gathering.get_splunk_data import download_splunk_data
-from ml_monitoring_service.data_gathering.combine import combine_services
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
 from ml_monitoring_service.constants import DOWNLOAD_ENABLED, MAX_EPOCHS, Colors
+from ml_monitoring_service.data_gathering.combine import combine_services
+from ml_monitoring_service.data_gathering.get_prometheus_data import (
+    main as download_prometheus_data,
+)
+from ml_monitoring_service.data_gathering.get_splunk_data import download_splunk_data
+from ml_monitoring_service.data_handling import (
+    check_for_nan,
+    convert_to_model_input,
+    get_microservice_data_from_file,
+    get_ordered_timepoints,
+    get_timestamp_of_latest_data,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def create_and_train_model(active_set: str) -> Optional[AnomalyDetector]:
+def create_and_train_model(active_set: str) -> AnomalyDetector | None:
     """Create and train an anomaly detection model for the specified service set
-    
+
     Args:
         active_set: Name of the service set to train the model for
-        
+
     Returns:
         Trained AnomalyDetector instance, or None if training fails
     """
-
 
     age_latest_data = get_timestamp_of_latest_data(active_set)
 
@@ -48,9 +50,13 @@ def create_and_train_model(active_set: str) -> Optional[AnomalyDetector]:
                 combine_services("training", active_set, age_latest_data)
                 logger.info("Data download and combination completed successfully.")
             else:
-                logger.warning("DOWNLOAD env var is set to false, skipping data download")
+                logger.warning(
+                    "DOWNLOAD env var is set to false, skipping data download"
+                )
         except Exception as e:
-            logger.error(f"An error occurred during training data download: {e}", exc_info=True)
+            logger.error(
+                f"An error occurred during training data download: {e}", exc_info=True
+            )
             mlflow.log_param("training_error", str(e))
             return None
 
@@ -78,7 +84,9 @@ def create_and_train_model(active_set: str) -> Optional[AnomalyDetector]:
         train_data = data[:train_size]
         val_data = data[train_size:]
 
-        logger.info(f"Data split: {train_size} training samples, {val_size} validation samples")
+        logger.info(
+            f"Data split: {train_size} training samples, {val_size} validation samples"
+        )
 
         config = conf.get_config(active_set)
 
@@ -92,7 +100,14 @@ def create_and_train_model(active_set: str) -> Optional[AnomalyDetector]:
         )
 
         logger.info("Training model...")
-        detector.train(train_data, val_data, df, active_set, max_epochs=MAX_EPOCHS, timepoints=timepoints)
+        detector.train(
+            train_data,
+            val_data,
+            df,
+            active_set,
+            max_epochs=MAX_EPOCHS,
+            timepoints=timepoints,
+        )
 
         logger.info("Setting threshold using validation data...")
         detector.set_threshold(
@@ -106,6 +121,12 @@ def create_and_train_model(active_set: str) -> Optional[AnomalyDetector]:
         if os.path.exists(model_filename):
             mlflow.log_artifact(model_filename, artifact_path="model")
 
-        logger.info(Colors.blue(f"✅ MODEL CREATION PROCESS FINISHED FOR SERVICE SET: {active_set}."))
-        logger.info(Colors.blue(f"TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"))
+        logger.info(
+            Colors.blue(
+                f"✅ MODEL CREATION PROCESS FINISHED FOR SERVICE SET: {active_set}."
+            )
+        )
+        logger.info(
+            Colors.blue(f"TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        )
         return detector
