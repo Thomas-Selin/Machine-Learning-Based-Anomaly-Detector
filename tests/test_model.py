@@ -13,7 +13,7 @@ class TestPositionalEncoding:
         pe = PositionalEncoding(d_model, max_len)
         
         assert hasattr(pe, 'pe')
-        assert pe.pe.shape == (max_len, 1, d_model)
+        assert pe.pe.shape == (1, max_len, d_model)
     
     def test_positional_encoding_forward(self):
         """Test forward pass of positional encoding"""
@@ -22,7 +22,7 @@ class TestPositionalEncoding:
         seq_len = 10
         
         pe = PositionalEncoding(d_model)
-        x = torch.randn(seq_len, batch_size, d_model)
+        x = torch.randn(batch_size, seq_len, d_model)
         output = pe(x)
         
         assert output.shape == x.shape
@@ -33,7 +33,7 @@ class TestPositionalEncoding:
         d_model = 64
         pe = PositionalEncoding(d_model)
         
-        x1 = torch.randn(10, 2, d_model)
+        x1 = torch.randn(2, 10, d_model)
         x2 = x1.clone()
         
         output1 = pe(x1)

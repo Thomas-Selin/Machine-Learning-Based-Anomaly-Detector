@@ -18,16 +18,19 @@ class PositionalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(position * div_term)  # Even indices: sine waves
         pe[:, 1::2] = torch.cos(position * div_term)  # Odd indices: cosine waves
         
-        # Reshape to [1, max_len, d_model] and transpose to [max_len, 1, d_model]
-        pe = pe.unsqueeze(0).transpose(0, 1)
+        # Batch-first storage: [1, max_len, d_model]
+        pe = pe.unsqueeze(0)
         
         # Register as buffer (persistent state not for optimization)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        # Add position encoding to input (broadcasting)
-        x = x + self.pe[:x.size(0), :]
-        return x
+        """Add positional encodings.
+
+        Expects batch-first tensors: x shape [batch, seq_len, d_model]
+        """
+        # self.pe: [1, max_len, d_model]
+        return x + self.pe[:, :x.size(1), :]
 
 class HybridAutoencoderTransformerModel(nn.Module):
     """Transformer-based autoencoder for microservice anomaly detection
@@ -66,7 +69,7 @@ class HybridAutoencoderTransformerModel(nn.Module):
         # The expanded dimension for transformer
         transformer_dim = num_services * self.hidden_dim
         
-        # Standard positional encoding with correct dimension
+        # Positional encoding for batch-first transformer input
         self.positional_encoding = PositionalEncoding(transformer_dim)
         
         # Regular transformer for temporal patterns with matching dimension
