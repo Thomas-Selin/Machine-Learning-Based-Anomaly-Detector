@@ -27,7 +27,8 @@ from ml_monitoring_service.model_building import create_and_train_model
 from ml_monitoring_service.anomaly_analyser import analyse_anomalies
 from ml_monitoring_service.constants import (
     LOG_LEVEL, DOWNLOAD_ENABLED, Colors,
-    INFERENCE_DELAY_OFFSET_MINUTES, DEFAULT_TRAINING_INTERVAL_MINUTES
+    INFERENCE_DELAY_OFFSET_MINUTES, DEFAULT_TRAINING_INTERVAL_MINUTES,
+    RECALCULATE_THRESHOLD_ON_INFERENCE,
 )
 
 
@@ -156,10 +157,19 @@ def inference(active_set: str, model_filename: str) -> None:
         
         # Option: Recalculate threshold if you want to use a different percentile without retraining
         # This will use the inference data to recalculate the threshold based on the current percentile setting
-        # Uncomment the following lines to enable dynamic threshold recalculation:
-        logger.info(f"Recalculating threshold with percentile={config.anomaly_threshold_percentile}")
-        detector.set_threshold(data, df, percentile=config.anomaly_threshold_percentile)
-        logger.info(f"New threshold: {detector.threshold}")
+        if RECALCULATE_THRESHOLD_ON_INFERENCE:
+            logger.warning(
+                "Recalculating threshold on inference data is enabled. "
+                "This can reduce sensitivity to real anomalies if the inference window contains them."
+            )
+            logger.info(f"Recalculating threshold with percentile={config.anomaly_threshold_percentile}")
+            detector.set_threshold(data, timepoints=timepoints, percentile=config.anomaly_threshold_percentile)
+            logger.info(f"New threshold: {detector.threshold}")
+        else:
+            logger.info(
+                f"Using persisted threshold {detector.threshold:.6f}. "
+                "(Set RECALCULATE_THRESHOLD_ON_INFERENCE=true to recompute on inference data.)"
+            )
 
         # Perform inference
         logger.info("Running anomaly detection...")

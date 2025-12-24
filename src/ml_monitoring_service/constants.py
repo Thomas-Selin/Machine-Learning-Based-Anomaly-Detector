@@ -84,6 +84,8 @@ DEFAULT_TRAINING_INTERVAL_MINUTES = 45
 
 # Request timeout for external API calls (in seconds)
 REQUEST_TIMEOUT = 10
+# Recompute anomaly threshold from inference data (not recommended by default).
+RECALCULATE_THRESHOLD_ON_INFERENCE = os.getenv('RECALCULATE_THRESHOLD_ON_INFERENCE', 'false').lower() == 'true'
 
 # ============================================================================
 # Training config
