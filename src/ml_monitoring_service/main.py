@@ -20,7 +20,13 @@ from ml_monitoring_service.data_gathering.get_prometheus_data import main as dow
 from ml_monitoring_service.data_gathering.get_splunk_data import download_splunk_data
 from ml_monitoring_service.data_gathering.combine import combine_services
 from ml_monitoring_service.visualisation import visualize_microservice_graph
-from ml_monitoring_service.data_handling import convert_to_model_input, check_for_nan, get_microservice_data_from_file, get_timestamp_of_latest_data
+from ml_monitoring_service.data_handling import (
+    convert_to_model_input,
+    check_for_nan,
+    get_microservice_data_from_file,
+    get_timestamp_of_latest_data,
+    get_ordered_timepoints,
+)
 from ml_monitoring_service.utils import HealthCheckFilter, get_memory_usage, ConditionalFormatter
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
 from ml_monitoring_service.model_building import create_and_train_model
@@ -64,12 +70,14 @@ def load_model(model_filename: str, num_features: int, num_services: int, config
     logger.info(f"Memory usage before loading model: {get_memory_usage()}")
     
     try:
-        checkpoint = torch.load(model_filename, weights_only=False)
+        checkpoint = torch.load(model_filename, weights_only=False, map_location='cpu')
+
+        window_size = checkpoint.get('window_size', config.window_size)
         
         detector = AnomalyDetector(
             num_services=num_services,
             num_features=num_features,
-            window_size=30,
+            window_size=window_size,
             config=config
         )
         
@@ -138,6 +146,7 @@ def inference(active_set: str, model_filename: str) -> None:
         df = check_for_nan(df)
 
         data, services, features = convert_to_model_input(active_set, df)
+        timepoints = get_ordered_timepoints(df)
         
         logger.info("\nDataset details:")
         logger.info(f"Number of services: {len(services)}")
@@ -174,7 +183,7 @@ def inference(active_set: str, model_filename: str) -> None:
         # Perform inference
         logger.info("Running anomaly detection...")
         service_errors = {service: 0 for service in services}
-        timestamps = df['timestamp_nanoseconds'].unique()
+        timestamps = timepoints
         num_anomalies = 0
         num_windows_processed = 0
         

@@ -6,7 +6,8 @@ from typing import Optional
 import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.data_handling import (
     check_for_nan, get_timestamp_of_latest_data, get_microservice_data_from_file, 
-    convert_to_model_input
+    convert_to_model_input,
+    get_ordered_timepoints,
 )
 from ml_monitoring_service.data_gathering.get_prometheus_data import main as download_prometheus_data
 from ml_monitoring_service.data_gathering.get_splunk_data import download_splunk_data
@@ -50,6 +51,7 @@ def create_and_train_model(active_set: str) -> Optional[AnomalyDetector]:
     df = check_for_nan(df)
 
     data, services, features = convert_to_model_input(active_set, df)
+    timepoints = get_ordered_timepoints(df)
     
     logger.info("\nDataset details:")
     logger.info(f"Number of services: {len(services)}")
@@ -72,7 +74,7 @@ def create_and_train_model(active_set: str) -> Optional[AnomalyDetector]:
     detector = AnomalyDetector(
         num_services=len(services),
         num_features=len(features),
-        window_size=30,
+        window_size=config.window_size,
         config=config
     )
 
@@ -81,10 +83,10 @@ def create_and_train_model(active_set: str) -> Optional[AnomalyDetector]:
     # visualize_model_architecture(detector.model)
     
     logger.info("Training model...")
-    detector.train(train_data, val_data, df, active_set, max_epochs=MAX_EPOCHS)
+    detector.train(train_data, val_data, df, active_set, max_epochs=MAX_EPOCHS, timepoints=timepoints)
     
     logger.info("Setting threshold using validation data...")
-    detector.set_threshold(val_data, df, percentile=config.anomaly_threshold_percentile)
+    detector.set_threshold(val_data, timepoints=timepoints[train_size:], percentile=config.anomaly_threshold_percentile)
     
     # Save the trained model with all necessary information
     model_filename = f'output/{active_set}/best_model_{active_set}.pth'

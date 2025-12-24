@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
+import copy
 
 import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.data_handling import ServiceMetricsDataset
@@ -44,7 +45,17 @@ class AnomalyDetector:
         
         logger.info(f"Initialized AnomalyDetector on device: {self.device}")
 
-    def train(self, train_data, val_data, df, active_set, max_epochs, batch_size=32, patience=15):
+    def train(
+        self,
+        train_data,
+        val_data,
+        df,
+        active_set,
+        max_epochs,
+        timepoints,
+        batch_size=32,
+        patience=15,
+    ):
         """Train the model on normal data with early stopping and learning rate reduction
         
         Args:
@@ -109,11 +120,16 @@ class AnomalyDetector:
                 mlflow.log_artifact(f"output/{active_set}/service_names.txt")
                 # mlflow.log_artifact(f"output/{active_set}/feature_names.txt")
             
-            # Get timestamps from the original DataFrame
+            # Align timestamps to the model time axis (unique ordered timepoints)
             train_size = len(train_data)
             val_size = len(val_data)
-            train_timestamps = df.loc[df.index[:train_size], 'timestamp'].values
-            val_timestamps = df.loc[df.index[train_size:train_size + val_size], 'timestamp'].values
+            if len(timepoints) < (train_size + val_size):
+                raise ValueError(
+                    f"Not enough timepoints ({len(timepoints)}) for train_size={train_size} and val_size={val_size}"
+                )
+
+            train_timestamps = timepoints[:train_size]
+            val_timestamps = timepoints[train_size:train_size + val_size]
             
             dataset = ServiceMetricsDataset(train_data, train_timestamps, self.window_size)
 
@@ -171,7 +187,8 @@ class AnomalyDetector:
                     best_loss = avg_val_loss
                     patience_counter = 0
                     # Save the best model state in memory
-                    best_model_state = self.model.state_dict().copy()
+                    # Deep-copy state dict so later training steps can't mutate it.
+                    best_model_state = copy.deepcopy(self.model.state_dict())
                     mlflow.log_metric("best_val_loss", avg_val_loss)
                 else:
                     patience_counter += 1
@@ -187,8 +204,8 @@ class AnomalyDetector:
                 self.model.load_state_dict(best_model_state)
                 logger.info(f"Loaded best model with validation loss: {best_loss:.6f}")
                 
-                # Set threshold before saving (will be updated later in model_building.py but good to have here too)
-                self.set_threshold(val_data, df)
+                # Set threshold before saving (use aligned timepoints for correct time features)
+                self.set_threshold(val_data, timepoints=val_timestamps)
                 
                 # Save the best model to disk with threshold
                 model_path = f'output/{active_set}/best_model_{active_set}.pth'
@@ -202,22 +219,25 @@ class AnomalyDetector:
                 logger.info(f"Best model saved to {model_path} with threshold: {self.threshold:.6f}")
 
             # Log the threshold
-            self.set_threshold(val_data, df)
+            self.set_threshold(val_data, timepoints=val_timestamps)
             mlflow.log_metric("anomaly_threshold", self.threshold)
             logger.info(f"Anomaly detection threshold set to: {self.threshold:.6f}")
             logger.info(f"\n{self.model}\n")
 
-    def set_threshold(self, validation_data, df=None, percentile=99):
+    def set_threshold(self, validation_data, df=None, timepoints=None, percentile=99):
         """Set anomaly threshold based on validation data"""
         self.model.eval()
 
-        if df is not None:
-            # Extract timestamps from the dataframe like in train method
-            val_size = len(validation_data)
-            val_timestamps = df.loc[df.index[:val_size], 'timestamp'].values
+        if timepoints is not None:
+            val_timestamps = pd.to_datetime(timepoints).to_numpy()
+        elif df is not None:
+            # Best-effort fallback: derive from df's ordered unique timepoints
+            from ml_monitoring_service.data_handling import get_ordered_timepoints
+            ordered = get_ordered_timepoints(df)
+            val_timestamps = pd.to_datetime(ordered[:len(validation_data)]).to_numpy()
         else:
             # Fallback to generating synthetic timestamps
-            logger.warning("No DataFrame provided for timestamps, using synthetic timestamps")
+            logger.warning("No timestamps provided for thresholding; using synthetic timestamps")
             val_timestamps = pd.date_range(
                 start=pd.Timestamp('2025-03-27'),
                 periods=len(validation_data),

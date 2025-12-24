@@ -10,6 +10,28 @@ import ml_monitoring_service.configuration as conf
 
 logger = logging.getLogger(__name__)
 
+
+def get_ordered_timepoints(df: pd.DataFrame) -> np.ndarray:
+    """Return ordered unique timepoints used as the model's time axis.
+
+    The pipeline often contains multiple rows per timestamp (one per service).
+    The model input is constructed over unique timepoints; this helper ensures
+    deterministic ordering and consistent alignment across training/thresholding/inference.
+
+    Args:
+        df: DataFrame containing at least 'timestamp_nanoseconds'.
+
+    Returns:
+        numpy array of datetime64-compatible timepoints (sorted ascending).
+    """
+    if 'timestamp_nanoseconds' not in df.columns:
+        raise KeyError("DataFrame must contain 'timestamp_nanoseconds'")
+
+    ts = pd.to_datetime(df['timestamp_nanoseconds'], errors='coerce')
+    ts = ts.dropna().sort_values().drop_duplicates()
+    # Return plain NumPy datetime64 array for compatibility.
+    return ts.to_numpy()
+
 def check_for_nan(df: pd.DataFrame) -> pd.DataFrame:
     """Check for NaN values in the DataFrame and fill them with appropriate values
     
@@ -82,7 +104,7 @@ def convert_to_model_input(active_set: str, df: pd.DataFrame) -> Tuple[np.ndarra
         df = normalize_feature(df, feature)
     
     # Create 3D array [time_steps, num_services, num_features]
-    timestamps = df['timestamp_nanoseconds'].unique()
+    timestamps = get_ordered_timepoints(df)
     services = conf.get_services(active_set)
     service_to_idx = {service: idx for idx, service in enumerate(services)}
     data = np.zeros((len(timestamps), len(services), len(features)))

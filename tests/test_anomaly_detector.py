@@ -21,6 +21,7 @@ def model_input(sample_data, config):
 
 def test_train(model_input, config):
     data, services, features, df = model_input
+    timepoints = get_ordered_timepoints(df)
     detector = AnomalyDetector(
         num_services=len(services),
         num_features=len(features),
@@ -33,11 +34,12 @@ def test_train(model_input, config):
     train_data = data[:train_size]
     val_data = data[train_size:]
     
-    detector.train(train_data, val_data, df, active_set="transfer", max_epochs=1)
+    detector.train(train_data, val_data, df, active_set="transfer", max_epochs=1, timepoints=timepoints)
     assert detector.model is not None
 
 def test_set_threshold(model_input, config):
     data, services, features, df = model_input
+    timepoints = get_ordered_timepoints(df)
     detector = AnomalyDetector(
         num_services=len(services),
         num_features=len(features),
@@ -49,12 +51,13 @@ def test_set_threshold(model_input, config):
     train_data = data[:train_size]
     val_data = data[train_size:]
     
-    detector.train(train_data, val_data, df, active_set="transfer", max_epochs=1)
-    detector.set_threshold(val_data, percentile=config.anomaly_threshold_percentile)
+    detector.train(train_data, val_data, df, active_set="transfer", max_epochs=1, timepoints=timepoints)
+    detector.set_threshold(val_data, timepoints=timepoints[train_size:], percentile=config.anomaly_threshold_percentile)
     assert detector.threshold is not None
 
 def test_detect(model_input, config):
     data, services, features, df = model_input
+    timepoints = get_ordered_timepoints(df)
     detector = AnomalyDetector(
         num_services=len(services),
         num_features=len(features),
@@ -66,8 +69,8 @@ def test_detect(model_input, config):
     train_data = data[:train_size]
     val_data = data[train_size:]
     
-    detector.train(train_data, val_data, df, active_set="transfer", max_epochs=2)
-    detector.set_threshold(val_data, percentile=config.anomaly_threshold_percentile)
+    detector.train(train_data, val_data, df, active_set="transfer", max_epochs=2, timepoints=timepoints)
+    detector.set_threshold(val_data, timepoints=timepoints[train_size:], percentile=config.anomaly_threshold_percentile)
     
     result = detector.detect(data[:config.window_size], '2022-01-01 00:00:00')
     
@@ -80,6 +83,7 @@ def test_detect(model_input, config):
 
 def test_analyze_anomalies(model_input, config):
     data, services, features, df = model_input
+    timepoints = get_ordered_timepoints(df)
     detector = AnomalyDetector(
         num_services=len(services),
         num_features=len(features),
@@ -91,8 +95,8 @@ def test_analyze_anomalies(model_input, config):
     train_data = data[:train_size]
     val_data = data[train_size:]
     
-    detector.train(train_data, val_data, df, active_set="transfer", max_epochs=2)
-    detector.set_threshold(val_data, percentile=config.anomaly_threshold_percentile)
+    detector.train(train_data, val_data, df, active_set="transfer", max_epochs=2, timepoints=timepoints)
+    detector.set_threshold(val_data, timepoints=timepoints[train_size:], percentile=config.anomaly_threshold_percentile)
     
     result = detector.detect(data[:config.window_size], '2022-01-01 00:00:00')
     explanations = analyse_anomalies(result, config.relationships, services, features)
