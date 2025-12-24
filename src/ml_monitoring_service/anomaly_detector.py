@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 import copy
+from contextlib import nullcontext
 
 import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.data_handling import ServiceMetricsDataset
@@ -82,44 +83,47 @@ class AnomalyDetector:
         # Import here to avoid circular dependency
         import mlflow
         from ml_monitoring_service.visualisation import save_data_to_mlflow
-        from ml_monitoring_service.constants import MLFLOW_TRACKING_URI
+        
         
         # Enable MLflow autologging
         mlflow.pytorch.autolog()
-        
-        # Start MLflow run with a descriptive name
-        with mlflow.start_run(run_name=f"Model training: {active_set}-microservice-set", log_system_metrics=True):
+
+        # Reuse an existing MLflow run if one is already active (e.g. started in model_building).
+        run_ctx = nullcontext()
+        if mlflow.active_run() is None:
+            run_ctx = mlflow.start_run(
+                run_name=f"Model training: {active_set}-microservice-set",
+                log_system_metrics=True,
+            )
+
+        with run_ctx:
             # Log custom parameters
             mlflow.log_param("num_services", self.num_services)
             mlflow.log_param("num_features", self.num_features)
             mlflow.log_param("window_size", self.window_size)
             mlflow.log_param("batch_size", batch_size)
             mlflow.log_param("max_epochs", max_epochs)
-            
+
             # Save training data to MLflow
             save_data_to_mlflow(df, "train_dataframe_mlflow.json", active_set)
-            
+
             # Save the exact training data used for model training to a file
             train_data_path = f"output/{active_set}/train_data.npy"
             val_data_path = f"output/{active_set}/val_data.npy"
             np.save(train_data_path, train_data)
             np.save(val_data_path, val_data)
-            
+
             # Log the training data as artifacts in MLflow
             if mlflow.active_run():
-                mlflow.log_artifact(train_data_path)
-                mlflow.log_artifact(val_data_path)
-                logger.info(f"Successfully logged training and validation data to MLflow")
-                
-                # Also save service names and feature names for reference
+                mlflow.log_artifact(train_data_path, artifact_path="data")
+                mlflow.log_artifact(val_data_path, artifact_path="data")
+                logger.info("Successfully logged training and validation data to MLflow")
+
+                # Also save service names for reference
                 with open(f"output/{active_set}/service_names.txt", "w") as f:
                     f.write("\n".join(conf.get_services(active_set)))
-                # with open(f"output/{active_set}/feature_names.txt", "w") as f:
-                #     f.write("\n".join(features))
-                    
-                mlflow.log_artifact(f"output/{active_set}/service_names.txt")
-                # mlflow.log_artifact(f"output/{active_set}/feature_names.txt")
-            
+                mlflow.log_artifact(f"output/{active_set}/service_names.txt", artifact_path="data")
+
             # Align timestamps to the model time axis (unique ordered timepoints)
             train_size = len(train_data)
             val_size = len(val_data)
@@ -130,11 +134,10 @@ class AnomalyDetector:
 
             train_timestamps = timepoints[:train_size]
             val_timestamps = timepoints[train_size:train_size + val_size]
-            
-            dataset = ServiceMetricsDataset(train_data, train_timestamps, self.window_size)
 
+            dataset = ServiceMetricsDataset(train_data, train_timestamps, self.window_size)
             dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-            
+
             val_dataset = ServiceMetricsDataset(val_data, val_timestamps, self.window_size)
             val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
             

@@ -2,6 +2,8 @@ import logging
 import sys
 import os
 import platform
+import shutil
+from pathlib import Path
 import torch
 import mlflow
 
@@ -35,6 +37,7 @@ from ml_monitoring_service.constants import (
     LOG_LEVEL, DOWNLOAD_ENABLED, Colors,
     INFERENCE_DELAY_OFFSET_MINUTES, DEFAULT_TRAINING_INTERVAL_MINUTES,
     RECALCULATE_THRESHOLD_ON_INFERENCE,
+    MLFLOW_EXPERIMENT_NAME,
 )
 
 
@@ -45,6 +48,42 @@ logging.basicConfig(
     handlers=[handler]
 )
 logger = logging.getLogger(__name__)
+
+
+def _try_restore_model_from_mlflow(active_set: str, model_filename: str) -> bool:
+    """Try to download the latest trained model checkpoint from MLflow to a local cache path.
+
+    Returns:
+        True if a checkpoint was downloaded to model_filename, else False.
+    """
+    try:
+        experiment = mlflow.get_experiment_by_name(MLFLOW_EXPERIMENT_NAME)
+        if experiment is None:
+            logger.info(f"MLflow experiment '{MLFLOW_EXPERIMENT_NAME}' not found; cannot restore model.")
+            return False
+
+        run_name = f"Model training: {active_set}-microservice-set"
+        runs = mlflow.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            filter_string=f"tags.mlflow.runName = '{run_name}'",
+            order_by=["attributes.start_time DESC"],
+            max_results=1,
+        )
+        if runs.empty:
+            logger.info(f"No MLflow training runs found for '{active_set}'.")
+            return False
+
+        run_id = runs.iloc[0]["run_id"]
+        artifact_rel = f"model/best_model_{active_set}.pth"
+        downloaded = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path=artifact_rel)
+
+        Path(model_filename).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(downloaded, model_filename)
+        logger.info(f"Restored model checkpoint from MLflow run {run_id} to {model_filename}")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to restore model from MLflow: {e}")
+        return False
 
 
 def load_model(model_filename: str, num_features: int, num_services: int, config: conf.ServiceSetConfig, override_threshold: float = None) -> AnomalyDetector:
@@ -110,7 +149,10 @@ def inference(active_set: str, model_filename: str) -> None:
         active_set: Name of the service set to run inference on
         model_filename: Path to the trained model file
     """
-    # Check if model file exists
+    # Ensure model is available locally (output/ is treated as a cache; MLflow is the source of truth).
+    if not os.path.exists(model_filename):
+        _try_restore_model_from_mlflow(active_set, model_filename)
+
     if not os.path.exists(model_filename):
         logger.warning(f"No trained model found at {model_filename}. Skipping inference.")
         return
@@ -140,7 +182,10 @@ def inference(active_set: str, model_filename: str) -> None:
         
         # Read sample data from file
         logger.info("Reading sample data from file...")
-        df = get_microservice_data_from_file(f"output/{active_set}/inference_dataset.json")
+        inference_dataset_path = f"output/{active_set}/inference_dataset.json"
+        df = get_microservice_data_from_file(inference_dataset_path)
+        if mlflow.active_run() and os.path.exists(inference_dataset_path):
+            mlflow.log_artifact(inference_dataset_path, artifact_path="data")
         
         # Check for NaN values in data
         df = check_for_nan(df)

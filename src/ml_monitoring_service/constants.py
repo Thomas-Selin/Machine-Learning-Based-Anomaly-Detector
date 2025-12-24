@@ -19,6 +19,7 @@ DOWNLOAD_ENABLED = os.getenv('DOWNLOAD', 'true').lower() != 'false'
 
 # MLflow configuration
 MLFLOW_TRACKING_URI = os.getenv('MLFLOW_TRACKING_URI', 'http://localhost:5000/')
+MLFLOW_EXPERIMENT_NAME = os.getenv('MLFLOW_EXPERIMENT_NAME', 'ML Based Anomaly Detector')
 
 # Prometheus configuration
 PROMETHEUS_URL = os.getenv('PROMETHEUS_URL')

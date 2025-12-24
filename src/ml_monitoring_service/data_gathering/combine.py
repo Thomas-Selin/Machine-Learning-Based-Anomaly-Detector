@@ -54,11 +54,14 @@ def combine_services(task: str, active_set: str, age_latest_data: Optional[datet
             # Extract service name from the file name
             df['service'] = service_name
             
-            # Convert timestamp to datetime
-            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+            # Convert timestamp to datetime and round to milliseconds for stable joining
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce').dt.round('ms')
             
             # Drop rows with invalid timestamps
             df = df.dropna(subset=['timestamp'])
+
+            # Stable integer time key (ns since epoch)
+            df['timestamp_nanoseconds'] = df['timestamp'].view('int64')
             
             # Append the DataFrame to the list
             dataframes.append(df)
@@ -73,8 +76,8 @@ def combine_services(task: str, active_set: str, age_latest_data: Optional[datet
     
     combined_prometheus_df = pd.concat(dataframes, axis=0, ignore_index=True, copy=False)
 
-    # Group by 'timestamp' and 'service' and aggregate using 'first' to combine metrics into a single row
-    combined_prometheus_df = combined_prometheus_df.groupby(['timestamp', 'service'], as_index=False).first()
+    # Group by stable time key + service and aggregate using 'first' to combine metrics into a single row
+    combined_prometheus_df = combined_prometheus_df.groupby(['timestamp_nanoseconds', 'service'], as_index=False).first()
 
     ############### COMBINE WITH SPLUNK DATA ########################################
     splunk_file = Path("output") / active_set / f"splunk_results_{task}.json"
@@ -95,13 +98,16 @@ def combine_services(task: str, active_set: str, age_latest_data: Optional[datet
     # Drop rows with invalid timestamps
     splunk_data = splunk_data.dropna(subset=['timestamp'])
 
-    splunk_data['timestamp_nanoseconds'] = splunk_data['timestamp']
-
-    # Round the timestamp in splunk_data to milliseconds
+    # Round to milliseconds for stable joining and derive integer key
     splunk_data['timestamp'] = splunk_data['timestamp'].dt.round('ms')
+    splunk_data['timestamp_nanoseconds'] = splunk_data['timestamp'].view('int64')
 
-    # Merge the DataFrames on the 'timestamp_ms' and 'service' columns
-    new_dataset = pd.merge(combined_prometheus_df, splunk_data, on=['timestamp', 'service'], how='outer')
+    # Merge the DataFrames on the stable time key and service
+    new_dataset = pd.merge(combined_prometheus_df, splunk_data, on=['timestamp_nanoseconds', 'service'], how='outer')
+
+    # Ensure human-readable timestamp exists (from key)
+    if 'timestamp' not in new_dataset.columns or new_dataset['timestamp'].isna().any():
+        new_dataset['timestamp'] = pd.to_datetime(new_dataset['timestamp_nanoseconds'], unit='ns')
 
     output_file_path = Path("output") / active_set / f"{task}_dataset.json"
     
@@ -142,6 +148,7 @@ def combine_services(task: str, active_set: str, age_latest_data: Optional[datet
         dataset = new_dataset
     
     # Extract time features from timestamp
+    dataset['timestamp'] = pd.to_datetime(dataset['timestamp'], errors='coerce')
     dataset['day_of_week'] = dataset['timestamp'].dt.dayofweek
     dataset['hour'] = dataset['timestamp'].dt.hour
     dataset['minute'] = dataset['timestamp'].dt.minute

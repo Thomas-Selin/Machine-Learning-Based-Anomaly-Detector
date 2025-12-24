@@ -11,6 +11,42 @@ import ml_monitoring_service.configuration as conf
 logger = logging.getLogger(__name__)
 
 
+def ensure_timestamp_nanoseconds_ns(df: pd.DataFrame) -> np.ndarray:
+    """Ensure `timestamp_nanoseconds` exists and is normalized to int64 nanoseconds.
+
+    Historical datasets in this repo sometimes store `timestamp_nanoseconds` as an ISO datetime
+    string (despite the name). Production pipeline should treat it as an integer nanoseconds key.
+
+    This function mutates the input DataFrame in-place.
+
+    Returns:
+        Sorted unique timestamp keys as int64 nanoseconds.
+    """
+    if 'timestamp_nanoseconds' not in df.columns:
+        raise KeyError("DataFrame must contain 'timestamp_nanoseconds'")
+
+    series = df['timestamp_nanoseconds']
+
+    if pd.api.types.is_integer_dtype(series) or pd.api.types.is_float_dtype(series):
+        # Treat numeric values as ns since epoch.
+        ns = pd.to_numeric(series, errors='coerce')
+    else:
+        # Treat as datetime-like (string/datetime).
+        dt = pd.to_datetime(series, errors='coerce')
+        ns = pd.Series(dt.view('int64'), index=df.index)
+
+    # Fill rows that couldn't be converted using the parsed timestamp column when available.
+    if ns.isna().any() and 'timestamp' in df.columns:
+        fallback_dt = pd.to_datetime(df['timestamp'], errors='coerce')
+        ns = ns.where(~ns.isna(), other=pd.Series(fallback_dt.view('int64'), index=df.index))
+
+    if ns.isna().any():
+        raise ValueError("Failed to normalize 'timestamp_nanoseconds' for some rows")
+
+    df['timestamp_nanoseconds'] = ns.astype('int64')
+    return np.sort(df['timestamp_nanoseconds'].unique())
+
+
 def get_ordered_timepoints(df: pd.DataFrame) -> np.ndarray:
     """Return ordered unique timepoints used as the model's time axis.
 
@@ -24,13 +60,9 @@ def get_ordered_timepoints(df: pd.DataFrame) -> np.ndarray:
     Returns:
         numpy array of datetime64-compatible timepoints (sorted ascending).
     """
-    if 'timestamp_nanoseconds' not in df.columns:
-        raise KeyError("DataFrame must contain 'timestamp_nanoseconds'")
-
-    ts = pd.to_datetime(df['timestamp_nanoseconds'], errors='coerce')
-    ts = ts.dropna().sort_values().drop_duplicates()
-    # Return plain NumPy datetime64 array for compatibility.
-    return ts.to_numpy()
+    timestamp_ns = ensure_timestamp_nanoseconds_ns(df)
+    # Convert ns keys to datetime64 for time features.
+    return pd.to_datetime(timestamp_ns, unit='ns').to_numpy()
 
 def check_for_nan(df: pd.DataFrame) -> pd.DataFrame:
     """Check for NaN values in the DataFrame and fill them with appropriate values
@@ -103,8 +135,9 @@ def convert_to_model_input(active_set: str, df: pd.DataFrame) -> Tuple[np.ndarra
     for feature in features:
         df = normalize_feature(df, feature)
     
-    # Create 3D array [time_steps, num_services, num_features]
-    timestamps = get_ordered_timepoints(df)
+    # Normalize timestamp key column to int64 nanoseconds for stable equality checks.
+    timestamp_ns = ensure_timestamp_nanoseconds_ns(df)
+    timestamps = timestamp_ns
     services = conf.get_services(active_set)
     service_to_idx = {service: idx for idx, service in enumerate(services)}
     data = np.zeros((len(timestamps), len(services), len(features)))
