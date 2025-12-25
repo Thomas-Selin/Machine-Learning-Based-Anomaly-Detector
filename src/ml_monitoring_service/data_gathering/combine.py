@@ -18,13 +18,13 @@ def combine_services(task: str, active_set: str, age_latest_data: str | None) ->
         age_latest_data: Timestamp of the latest existing data, or None if no existing data
     """
 
-    active_services = conf.get_services(active_set)
+    active_services = conf.config.get_services(active_set)
 
     # Get JSON files only for active services and metrics
     json_files = []
     base_output_path = Path("output") / active_set / f"prometheus_data_{task}"
 
-    for metric in conf.get_metrics(active_set):
+    for metric in conf.config.get_config(active_set).metrics:
         for service in active_services:
             service_clean = service.replace("-", "_")
             service_file_path = (

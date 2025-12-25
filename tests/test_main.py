@@ -3,10 +3,7 @@ import pandas as pd
 import pytest
 import torch
 
-from ml_monitoring_service.configuration import (
-    ConfigLoader,
-    get_services,
-)
+from ml_monitoring_service.configuration import ConfigLoader
 from ml_monitoring_service.data_handling import (
     ServiceMetricsDataset,
     check_for_nan,
@@ -70,6 +67,7 @@ def test_check_for_nan():
 def test_convert_to_model_input(config):
     df = get_microservice_data_from_file("tests/resources/combined_dataset_test.json")
     data, services, features = convert_to_model_input(active_set="transfer", df=df)
-    expected_services = get_services("transfer")
+    config = ConfigLoader("src/ml_monitoring_service/resources/service_sets.yaml")
+    expected_services = config.get_services("transfer")
     assert len(services) == len(expected_services)
     assert all(s in expected_services for s in services)

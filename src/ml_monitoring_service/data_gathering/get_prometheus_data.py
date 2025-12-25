@@ -345,7 +345,7 @@ def main(task: str, active_set: str) -> None:
             logger.warning(f"No timestamps found for service {service_name}")
             continue
 
-        for metric_type in conf.get_metrics(active_set):
+        for metric_type in conf.config.get_config(active_set).metrics:
             download_prometheus_data(
                 task, service_name, metric_type, timestamps, active_set
             )

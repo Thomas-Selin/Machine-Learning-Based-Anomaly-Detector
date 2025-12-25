@@ -88,7 +88,7 @@ def create_and_train_model(active_set: str) -> AnomalyDetector | None:
             f"Data split: {train_size} training samples, {val_size} validation samples"
         )
 
-        config = conf.get_config(active_set)
+        config = conf.config.get_config(active_set)
 
         # Create and train detector
         logger.info("\nInitializing anomaly detector...")

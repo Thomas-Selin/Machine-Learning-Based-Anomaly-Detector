@@ -2,13 +2,7 @@ from datetime import timedelta
 
 import pytest
 
-from ml_monitoring_service.configuration import (
-    ConfigLoader,
-    ServiceSetConfig,
-    get_metrics,
-    get_relationships,
-    get_services,
-)
+from ml_monitoring_service.configuration import ConfigLoader, ServiceSetConfig
 
 
 @pytest.fixture
@@ -35,13 +29,15 @@ def test_service_set_config():
 
 
 def test_get_services():
-    services = get_services("transfer")
+    config = ConfigLoader("src/ml_monitoring_service/resources/service_sets.yaml")
+    services = config.get_services("transfer")
     assert "mobile-bff" in services
     assert "transfer-service" in services
 
 
 def test_get_metrics():
-    metrics = get_metrics("transfer")
+    config = ConfigLoader("src/ml_monitoring_service/resources/service_sets.yaml")
+    metrics = config.get_config("transfer").metrics
     assert "cpu" in metrics
     assert "memory" in metrics
     # assert "latency" in metrics
@@ -71,7 +67,8 @@ def test_config_validation():
 
 
 def test_get_relationships():
-    relationships = get_relationships("transfer")
+    config = ConfigLoader("src/ml_monitoring_service/resources/service_sets.yaml")
+    relationships = config.get_config("transfer").relationships
     assert "mobile-bff" in relationships
     assert isinstance(relationships["mobile-bff"], list)
 

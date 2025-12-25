@@ -422,8 +422,9 @@ def download_splunk_data_in_batches(
     # Clean up any existing search jobs before starting a new batch search
     cleanup_all_search_jobs()
 
-    training_lookback_hours = conf.get_training_lookback_hours(active_set)
-    inference_lookback_minutes = conf.get_inference_lookback_minutes(active_set)
+    service_set_config = conf.config.get_config(active_set)
+    training_lookback_hours = service_set_config.training_lookback_hours
+    inference_lookback_minutes = service_set_config.inference_lookback_minutes
 
     # Set initial time range
     if timestamp_latest_data:

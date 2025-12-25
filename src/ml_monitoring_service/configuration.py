@@ -198,7 +198,7 @@ class ConfigLoader:
                 raise ValueError(f"Active service set '{service_set}' not found")
         return self.active_sets
 
-    def get_config(self, service_set: str | None = None) -> ServiceSetConfig:
+    def get_config(self, service_set: str) -> ServiceSetConfig:
         """Get the configuration for a specific service set
 
         Args:
@@ -250,64 +250,5 @@ class ConfigLoader:
         return sorted(list(self.service_sets.keys()))
 
 
-# Create global config instance
+# Global configuration instance
 config = ConfigLoader()
-
-# ============================================================================
-# Helper Functions - Convenience wrappers around ConfigLoader
-# ============================================================================
-
-
-def get_services(service_set: str | None = None) -> list[str]:
-    """Get all services for a service set or all active sets"""
-    return config.get_services(service_set)
-
-
-def get_relationships(service_set: str | None = None) -> dict[str, list[str]]:
-    """Get service relationships for a specific service set"""
-    return config.get_config(service_set).relationships
-
-
-def get_metrics(service_set: str | None = None) -> list[str]:
-    """Get metrics for a specific service set"""
-    return config.get_config(service_set).metrics
-
-
-def get_training_lookback_hours(service_set: str | None = None) -> int:
-    """Get training lookback hours for a specific service set"""
-    return config.get_config(service_set).training_lookback_hours
-
-
-def get_inference_lookback_minutes(service_set: str | None = None) -> int:
-    """Get inference lookback minutes for a specific service set"""
-    return config.get_config(service_set).inference_lookback_minutes
-
-
-def get_available_sets() -> list[str]:
-    """Get list of all available service sets"""
-    return config.get_available_sets()
-
-
-def set_active_sets(service_sets: list[str]) -> None:
-    """Set the active service sets"""
-    config.set_active(service_sets)
-
-
-def add_active_set(service_set: str) -> None:
-    """Add a service set to the active sets"""
-    config.add_active_set(service_set)
-
-
-def remove_active_set(service_set: str) -> None:
-    """Remove a service set from the active sets"""
-    config.remove_active_set(service_set)
-
-
-def get_active_sets() -> list[str]:
-    """Get the current active service sets"""
-    return config.get_active()
-
-
-def get_config(service_set: str) -> ServiceSetConfig:
-    """Get the configuration for a specific service set"""
-    return config.get_config(service_set)

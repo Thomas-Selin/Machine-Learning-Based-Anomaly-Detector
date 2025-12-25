@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from ml_monitoring_service.configuration import ConfigLoader, get_metrics
+from ml_monitoring_service.configuration import ConfigLoader
 from ml_monitoring_service.data_gathering.get_prometheus_data import (
     create_session_with_retries,
     download_prometheus_data,
@@ -130,7 +130,9 @@ def test_main_with_service_set(monkeypatch, config):
 
 def test_service_specific_metrics(monkeypatch, config):
     # Test that different service sets use their specific metrics
-    metrics = get_metrics("transfer")  # Get metrics for transfer service set
+    metrics = config.get_config(
+        "transfer"
+    ).metrics  # Get metrics for transfer service set
     assert "cpu" in metrics
     assert "memory" in metrics
     assert "latency" in metrics

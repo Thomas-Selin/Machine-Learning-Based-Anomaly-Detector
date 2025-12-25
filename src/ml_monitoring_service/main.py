@@ -235,7 +235,7 @@ def inference(active_set: str, model_filename: str) -> None:
         )
         return
 
-    config = conf.get_config(active_set)
+    config = conf.config.get_config(active_set)
     age_latest_data = get_timestamp_of_latest_data(active_set)
 
     with mlflow.start_run(run_name=f"Model inference: {active_set}-microservice-set"):
@@ -443,8 +443,8 @@ def create_app() -> Flask:
 
 
 if __name__ == "__main__":
-    conf.set_active_sets(conf.get_available_sets())
-    active_sets = conf.get_active_sets()
+    conf.config.set_active(conf.config.get_available_sets())
+    active_sets = conf.config.get_active()
 
     flask_app = create_app()
 
@@ -480,8 +480,8 @@ if __name__ == "__main__":
     # Schedule the model creation and inference tasks for each active set
     for active_set in active_sets:
         # Retrieve the entire configuration object for a specific service set
-        service_set_config = conf.get_config(active_set)
-        inference_lookback_minutes = conf.get_inference_lookback_minutes(active_set)
+        service_set_config = conf.config.get_config(active_set)
+        inference_lookback_minutes = service_set_config.inference_lookback_minutes
 
         # Access configuration
         logger.info(

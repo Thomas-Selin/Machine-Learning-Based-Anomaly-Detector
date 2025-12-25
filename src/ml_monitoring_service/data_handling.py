@@ -219,7 +219,7 @@ def convert_to_model_input(
         DataValidationError: If data validation fails
     """
     # Validate combined dataset
-    services = conf.get_services(active_set)
+    services = conf.config.get_services(active_set)
     validate_combined_dataset(df, services)
 
     # Ensure timestamp is in datetime format
@@ -227,7 +227,7 @@ def convert_to_model_input(
 
     # Time features are handled separately in the Dataset class
     # Only include the actual metrics and severity level
-    features = conf.get_metrics(active_set) + ["severity_level"]
+    features = conf.config.get_config(active_set).metrics + ["severity_level"]
 
     # Normalize features
     for feature in features:

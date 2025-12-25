@@ -134,7 +134,7 @@ class AnomalyDetector:
                     np.save(train_data_path, train_data)
                     np.save(val_data_path, val_data)
                     service_names_path.write_text(
-                        "\n".join(conf.get_services(active_set))
+                        "\n".join(conf.config.get_services(active_set))
                     )
 
                     mlflow.log_artifact(str(train_data_path), artifact_path="data")
