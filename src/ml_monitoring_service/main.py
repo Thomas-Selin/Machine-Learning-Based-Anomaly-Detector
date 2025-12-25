@@ -22,6 +22,7 @@ load_dotenv(find_dotenv())
 import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.anomaly_analyser import analyse_anomalies
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
+from ml_monitoring_service.circuit_breaker import circuit_breaker
 from ml_monitoring_service.constants import (
     DEFAULT_TRAINING_INTERVAL_MINUTES,
     DOWNLOAD_ENABLED,
@@ -55,6 +56,40 @@ handler = logging.StreamHandler()
 handler.setFormatter(ConditionalFormatter(datefmt="%H:%M"))
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), handlers=[handler])
 logger = logging.getLogger(__name__)
+
+
+# Circuit-breaker-protected wrappers for external services
+@circuit_breaker(
+    failure_threshold=3,
+    timeout=300,  # 5 minutes
+    expected_exception=(requests.RequestException, ConnectionError, TimeoutError),
+    fallback_return=None,
+)
+def safe_download_splunk_data(mode: str, active_set: str, age: str | None) -> None:
+    """Download Splunk data with circuit breaker protection."""
+    download_splunk_data(mode, active_set, age)
+
+
+@circuit_breaker(
+    failure_threshold=3,
+    timeout=300,
+    expected_exception=(requests.RequestException, ConnectionError, TimeoutError),
+    fallback_return=None,
+)
+def safe_download_prometheus_data(mode: str, active_set: str) -> None:
+    """Download Prometheus data with circuit breaker protection."""
+    download_prometheus_data(mode, active_set)
+
+
+@circuit_breaker(
+    failure_threshold=3,
+    timeout=300,
+    expected_exception=(OSError, ValueError),
+    fallback_return=None,
+)
+def safe_combine_services(mode: str, active_set: str, age: str | None) -> None:
+    """Combine service data with circuit breaker protection."""
+    combine_services(mode, active_set, age)
 
 
 def _try_restore_model_from_mlflow(active_set: str, model_filename: str) -> bool:
@@ -224,9 +259,9 @@ def inference(active_set: str, model_filename: str) -> None:
 
         try:
             if DOWNLOAD_ENABLED:
-                download_splunk_data("inference", active_set, age_latest_data)
-                download_prometheus_data("inference", active_set)
-                combine_services("inference", active_set, age_latest_data)
+                safe_download_splunk_data("inference", active_set, age_latest_data)
+                safe_download_prometheus_data("inference", active_set)
+                safe_combine_services("inference", active_set, age_latest_data)
                 logger.info("Data download and combination completed successfully.")
             else:
                 logger.warning(
@@ -235,11 +270,13 @@ def inference(active_set: str, model_filename: str) -> None:
         except (requests.RequestException, ConnectionError, TimeoutError) as e:
             logger.error(f"Network error during data download: {e}", exc_info=True)
             mlflow.log_param("inference_error", f"Network error: {str(e)}")
-            return
+            logger.warning("Continuing with existing data if available")
+            # Don't return here - try to continue with existing data
         except (OSError, ValueError) as e:
             logger.error(f"Data processing error during download: {e}", exc_info=True)
             mlflow.log_param("inference_error", f"Data error: {str(e)}")
-            return
+            logger.warning("Continuing with existing data if available")
+            # Don't return here - try to continue with existing data
 
         # Read sample data from file
         logger.info("Reading sample data from file...")
