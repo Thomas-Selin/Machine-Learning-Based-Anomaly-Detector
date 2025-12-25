@@ -2,6 +2,7 @@ import copy
 import logging
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -29,7 +30,21 @@ class AnomalyDetector:
         threshold: Anomaly detection threshold
     """
 
-    def __init__(self, num_services, num_features, window_size, config=None):
+    def __init__(
+        self,
+        num_services: int,
+        num_features: int,
+        window_size: int,
+        config: Any = None,
+    ) -> None:
+        """Initialize anomaly detector.
+
+        Args:
+            num_services: Number of services to monitor
+            num_features: Number of features per service
+            window_size: Size of sliding window for detection
+            config: Optional configuration object
+        """
         self.num_services = num_services
         self.num_features = num_features
         self.window_size = window_size
@@ -39,21 +54,33 @@ class AnomalyDetector:
             num_services=num_services,
             num_features=num_features,
         ).to(self.device)
-        self.threshold = None
+        self.threshold: float | None = None
 
         logger.info(f"Initialized AnomalyDetector on device: {self.device}")
 
     def train(
         self,
-        train_data,
-        val_data,
-        df,
-        active_set,
-        max_epochs,
-        timepoints,
-        batch_size=32,
-        patience=15,
-    ):
+        train_data: np.ndarray,
+        val_data: np.ndarray,
+        df: Any,
+        active_set: str,
+        max_epochs: int,
+        timepoints: list[Any],
+        batch_size: int = 32,
+        patience: int = 15,
+    ) -> None:
+        """Train the anomaly detection model.
+
+        Args:
+            train_data: Training data array
+            val_data: Validation data array
+            df: DataFrame with training data
+            active_set: Name of the service set
+            max_epochs: Maximum number of training epochs
+            timepoints: List of timepoints
+            batch_size: Batch size for training
+            patience: Early stopping patience
+        """
         """Train the model on normal data with early stopping and learning rate reduction
 
         Args:
@@ -284,8 +311,21 @@ class AnomalyDetector:
                 logger.info(f"Anomaly detection threshold set to: {self.threshold:.6f}")
             logger.info(f"\n{self.model}\n")
 
-    def set_threshold(self, validation_data, df=None, timepoints=None, percentile=99):
-        """Set anomaly threshold based on validation data"""
+    def set_threshold(
+        self,
+        validation_data: np.ndarray,
+        df: Any = None,
+        timepoints: list[Any] | None = None,
+        percentile: int = 99,
+    ) -> None:
+        """Set anomaly threshold based on validation data.
+
+        Args:
+            validation_data: Validation dataset
+            df: Optional DataFrame with data
+            timepoints: Optional list of timepoints
+            percentile: Percentile for threshold calculation
+        """
         self.model.eval()
 
         if timepoints is not None:
@@ -322,8 +362,16 @@ class AnomalyDetector:
 
         self.threshold = np.percentile(reconstruction_errors, percentile)
 
-    def detect(self, metrics_window, timestamp):
-        """Detect anomalies in current metrics window"""
+    def detect(self, metrics_window: np.ndarray, timestamp: str) -> dict[str, Any]:
+        """Detect anomalies in current metrics window.
+
+        Args:
+            metrics_window: Window of metrics to analyze
+            timestamp: Timestamp for the window
+
+        Returns:
+            Dictionary with detection results
+        """
         self.model.eval()
         with torch.no_grad():
             x = torch.FloatTensor(metrics_window).unsqueeze(0).to(self.device)

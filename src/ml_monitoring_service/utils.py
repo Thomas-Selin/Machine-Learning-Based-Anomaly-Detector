@@ -19,7 +19,15 @@ class ColoredFormatter(logging.Formatter):
     }
     RESET = "\033[0m"
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record with color coding.
+
+        Args:
+            record: Log record to format
+
+        Returns:
+            Formatted log string with color codes
+        """
         color = self.COLORS.get(record.levelname, "")
         record.levelname = f"{color}{record.levelname}{self.RESET}"
         return super().format(record)
@@ -28,7 +36,15 @@ class ColoredFormatter(logging.Formatter):
 class ConditionalFormatter(ColoredFormatter):
     """Formatter that ensures consistent timestamp formatting across all log levels"""
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record with timestamp.
+
+        Args:
+            record: Log record to format
+
+        Returns:
+            Formatted log string with timestamp
+        """
         # Always show timestamp before log level for all log levels
         self._style._fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
         return super().format(record)
@@ -51,5 +67,13 @@ def get_memory_usage() -> str:
 class HealthCheckFilter(logging.Filter):
     """Logging filter that suppresses health check endpoint logs to reduce noise"""
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Filter out health check endpoint logs.
+
+        Args:
+            record: Log record to filter
+
+        Returns:
+            False if record is a health check log, True otherwise
+        """
         return "/ml-based-anomaly-detector/admin/healthcheck" not in record.getMessage()

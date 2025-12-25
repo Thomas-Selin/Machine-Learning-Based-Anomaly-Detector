@@ -4,7 +4,15 @@ import torch.nn as nn
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
+    """Positional encoding module for transformer models."""
+
+    def __init__(self, d_model: int, max_len: int = 5000) -> None:
+        """Initialize positional encoding.
+
+        Args:
+            d_model: Dimension of the model
+            max_len: Maximum sequence length
+        """
         super().__init__()
         # Create encoding matrix of zeros [max_len, d_model]
         pe = torch.zeros(max_len, d_model)
@@ -27,10 +35,16 @@ class PositionalEncoding(nn.Module):
         # Register as buffer (persistent state not for optimization)
         self.register_buffer("pe", pe)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Add positional encodings.
 
         Expects batch-first tensors: x shape [batch, seq_len, d_model]
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Tensor with positional encodings added
         """
         # self.pe: [1, max_len, d_model]
         return x + self.pe[:, : x.size(1), :]
@@ -46,7 +60,13 @@ class HybridAutoencoderTransformerModel(nn.Module):
     - Autoencoder architecture for anomaly detection via reconstruction error
     """
 
-    def __init__(self, num_services, num_features):
+    def __init__(self, num_services: int, num_features: int) -> None:
+        """Initialize hybrid autoencoder transformer model.
+
+        Args:
+            num_services: Number of microservices
+            num_features: Number of features per service
+        """
         super().__init__()
         self.hidden_dim = 64
         self.num_services = num_services
@@ -90,7 +110,9 @@ class HybridAutoencoderTransformerModel(nn.Module):
         # Decoder
         self.decoder = nn.Linear(self.hidden_dim, num_features)
 
-    def forward(self, x, time_features):
+    def forward(
+        self, x: torch.Tensor, time_features: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through the transformer-based autoencoder
 
         Args:
@@ -100,6 +122,7 @@ class HybridAutoencoderTransformerModel(nn.Module):
                           Contains temporal features (hour, minute, day, second)
 
         Returns:
+            Tuple of (reconstructed output, attention_weights)
             Reconstructed output tensor of shape [batch_size, seq_len, num_services, num_features]
             The model attempts to reconstruct the input; reconstruction error indicates anomalies
 

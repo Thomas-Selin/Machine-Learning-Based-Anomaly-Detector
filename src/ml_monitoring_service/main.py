@@ -451,8 +451,12 @@ def create_app() -> Flask:
     app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
     @app.route("/ml-based-anomaly-detector/api/openapi.json", methods=["GET"])
-    def openapi_spec():
-        """Serve OpenAPI specification"""
+    def openapi_spec() -> Response:
+        """Serve OpenAPI specification.
+
+        Returns:
+            Response with OpenAPI JSON specification
+        """
         from importlib.resources import files
 
         spec_resource = files("ml_monitoring_service").joinpath("openapi.json")
