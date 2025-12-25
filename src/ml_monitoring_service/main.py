@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import mlflow
+import pandas as pd
 import requests
 import torch
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -189,9 +190,7 @@ def load_model(
 
         # Use override threshold if provided, otherwise use saved threshold
         if override_threshold is not None:
-            import numpy as np
-
-            detector.threshold = np.float64(override_threshold)
+            detector.threshold = float(override_threshold)
             logger.info(
                 f"Using override threshold: {override_threshold:.6f} (saved threshold was: {checkpoint['threshold']:.6f})"
             )
@@ -313,7 +312,7 @@ def inference(active_set: str, model_filename: str) -> None:
             )
             detector.set_threshold(
                 data,
-                timepoints=timepoints,
+                timepoints=pd.Series(timepoints),
                 percentile=int(config.anomaly_threshold_percentile),
             )
             logger.info(f"New threshold: {detector.threshold}")

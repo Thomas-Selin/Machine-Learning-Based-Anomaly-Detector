@@ -113,7 +113,7 @@ def create_and_train_model(active_set: str) -> AnomalyDetector | None:
         detector.set_threshold(
             val_data,
             timepoints=timepoints[train_size:],
-            percentile=config.anomaly_threshold_percentile,
+            percentile=int(config.anomaly_threshold_percentile),
         )
 
         # Ensure the final model checkpoint exists and is logged (detector.train logs best checkpoint).

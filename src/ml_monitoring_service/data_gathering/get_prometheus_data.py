@@ -165,7 +165,7 @@ def fill_missing_data(
     df = pd.DataFrame(data)
     df.drop_duplicates(subset="timestamp", inplace=True)  # Remove duplicate timestamps
     df.set_index("timestamp", inplace=True)
-    df = df.reindex(all_timestamps, fill_value=pd.NA)  # Fill missing values with NaN
+    df = df.reindex(all_timestamps)  # Fill missing values with NaN
     df.reset_index(inplace=True)
     df.rename(columns={"index": "timestamp"}, inplace=True)
     return df
@@ -349,7 +349,3 @@ def main(task: str, active_set: str) -> None:
             download_prometheus_data(
                 task, service_name, metric_type, timestamps, active_set
             )
-
-
-if __name__ == "__main__":
-    main()

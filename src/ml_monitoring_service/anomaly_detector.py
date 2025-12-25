@@ -65,7 +65,7 @@ class AnomalyDetector:
         df: Any,
         active_set: str,
         max_epochs: int,
-        timepoints: list[Any],
+        timepoints: list[Any] | np.ndarray,
         batch_size: int = 32,
         patience: int = 15,
     ) -> None:
@@ -77,7 +77,7 @@ class AnomalyDetector:
             df: DataFrame with training data
             active_set: Name of the service set
             max_epochs: Maximum number of training epochs
-            timepoints: List of timepoints
+            timepoints: List or ndarray of timepoints
             batch_size: Batch size for training
             patience: Early stopping patience
         """
@@ -153,8 +153,8 @@ class AnomalyDetector:
                     f"Not enough timepoints ({len(timepoints)}) for train_size={train_size} and val_size={val_size}"
                 )
 
-            train_timestamps = timepoints[:train_size]
-            val_timestamps = timepoints[train_size : train_size + val_size]
+            train_timestamps = pd.Series(timepoints[:train_size])
+            val_timestamps = pd.Series(timepoints[train_size : train_size + val_size])
 
             dataset = ServiceMetricsDataset(
                 train_data, train_timestamps, self.window_size
@@ -298,7 +298,7 @@ class AnomalyDetector:
         self,
         validation_data: np.ndarray,
         df: Any = None,
-        timepoints: list[Any] | None = None,
+        timepoints: list[Any] | pd.Series | np.ndarray | None = None,
         percentile: int = 99,
     ) -> None:
         """Set anomaly threshold based on validation data.
@@ -306,7 +306,7 @@ class AnomalyDetector:
         Args:
             validation_data: Validation dataset
             df: Optional DataFrame with data
-            timepoints: Optional list of timepoints
+            timepoints: Optional list, Series, or ndarray of timepoints
             percentile: Percentile for threshold calculation
         """
         self.model.eval()
@@ -343,7 +343,9 @@ class AnomalyDetector:
                 error = torch.mean((batch_x - output) ** 2, dim=(2, 3))
                 reconstruction_errors.extend(error.cpu().numpy())
 
-        self.threshold = np.percentile(reconstruction_errors, percentile)
+        self.threshold = float(
+            np.percentile(np.array(reconstruction_errors), percentile)
+        )
 
     def detect(self, metrics_window: np.ndarray, timestamp: str) -> dict[str, Any]:
         """Detect anomalies in current metrics window.
