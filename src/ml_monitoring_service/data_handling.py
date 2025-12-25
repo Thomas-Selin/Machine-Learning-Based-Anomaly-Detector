@@ -7,6 +7,10 @@ import torch
 from torch.utils.data import Dataset
 
 import ml_monitoring_service.configuration as conf
+from ml_monitoring_service.data_validation import (
+    validate_combined_dataset,
+    validate_model_input,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +138,14 @@ def convert_to_model_input(
 
     Returns:
         tuple: (data array [time_steps, num_services, num_features], services list, features list)
+
+    Raises:
+        DataValidationError: If data validation fails
     """
+    # Validate combined dataset
+    services = conf.get_services(active_set)
+    validate_combined_dataset(df, services)
+
     # Ensure timestamp is in datetime format
     df["timestamp"] = pd.to_datetime(df["timestamp"])
 
@@ -149,7 +160,6 @@ def convert_to_model_input(
     # Normalize timestamp key column to int64 nanoseconds for stable equality checks.
     timestamp_ns = ensure_timestamp_nanoseconds_ns(df)
     timestamps = timestamp_ns
-    services = conf.get_services(active_set)
     service_to_idx = {service: idx for idx, service in enumerate(services)}
     data = np.zeros((len(timestamps), len(services), len(features)))
 
@@ -167,6 +177,10 @@ def convert_to_model_input(
                     # Flatten to 1D array if only one row
                     feature_values = feature_values.flatten()
                 data[t, service_to_idx[service]] = feature_values
+
+    # Validate model input
+    expected_shape = (len(timestamps), len(services), len(features))
+    validate_model_input(data, expected_shape, services)
 
     logger.info(
         f"Converted data shape: {data.shape} (timesteps={len(timestamps)}, services={len(services)}, features={len(features)})"
