@@ -24,12 +24,21 @@ from ml_monitoring_service.anomaly_analyser import analyse_anomalies
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
 from ml_monitoring_service.circuit_breaker import circuit_breaker
 from ml_monitoring_service.constants import (
+    CLEANUP_DISK_THRESHOLD_PERCENT,
+    CLEANUP_ENABLED,
+    CLEANUP_MAX_AGE_DAYS,
+    CLEANUP_MLFLOW_MAX_AGE_DAYS,
+    CLEANUP_SCHEDULE_HOUR,
     DEFAULT_TRAINING_INTERVAL_MINUTES,
     DOWNLOAD_ENABLED,
     INFERENCE_DELAY_OFFSET_MINUTES,
     LOG_LEVEL,
     MLFLOW_EXPERIMENT_NAME,
     RECALCULATE_THRESHOLD_ON_INFERENCE,
+    SCHEDULER_COALESCE,
+    SCHEDULER_MAX_EXECUTION_TIME,
+    SCHEDULER_MAX_INSTANCES,
+    SCHEDULER_MAX_WORKERS,
     Colors,
 )
 from ml_monitoring_service.data_gathering.combine import combine_services
@@ -44,6 +53,7 @@ from ml_monitoring_service.data_handling import (
     get_ordered_timepoints,
     get_timestamp_of_latest_data,
 )
+from ml_monitoring_service.memory_management import perform_maintenance_cleanup
 from ml_monitoring_service.model_building import create_and_train_model
 from ml_monitoring_service.utils import (
     ConditionalFormatter,
@@ -497,10 +507,19 @@ if __name__ == "__main__":
 
     # Schedule the model creation task
     scheduler = BackgroundScheduler(
-        job_defaults={"max_instances": 1},
-        executors={"default": {"type": "threadpool", "max_workers": 5}},
+        job_defaults={
+            "max_instances": SCHEDULER_MAX_INSTANCES,
+            "coalesce": SCHEDULER_COALESCE,
+            "misfire_grace_time": SCHEDULER_MAX_EXECUTION_TIME,
+        },
+        executors={
+            "default": {"type": "threadpool", "max_workers": SCHEDULER_MAX_WORKERS}
+        },
     )
-    logger.info("Scheduler created")
+    logger.info(
+        f"Scheduler created with {SCHEDULER_MAX_WORKERS} workers, "
+        f"max_instances={SCHEDULER_MAX_INSTANCES}, coalesce={SCHEDULER_COALESCE}"
+    )
 
     # Schedule the model creation and inference tasks for each active set
     for active_set in active_sets:
@@ -551,6 +570,29 @@ if __name__ == "__main__":
         )
         delay += INFERENCE_DELAY_OFFSET_MINUTES
         logger.info(f"Training and inference scheduled for '{active_set}' service set.")
+
+    # Schedule cleanup job if enabled
+    if CLEANUP_ENABLED:
+        logger.info(
+            f"Scheduling daily cleanup at {CLEANUP_SCHEDULE_HOUR}:00 "
+            f"(max_age={CLEANUP_MAX_AGE_DAYS}d, mlflow_max_age={CLEANUP_MLFLOW_MAX_AGE_DAYS}d, "
+            f"disk_threshold={CLEANUP_DISK_THRESHOLD_PERCENT}%)"
+        )
+        scheduler.add_job(
+            name="maintenance_cleanup",
+            func=perform_maintenance_cleanup,
+            trigger="cron",
+            hour=CLEANUP_SCHEDULE_HOUR,
+            minute=0,
+            kwargs={
+                "max_age_days": CLEANUP_MAX_AGE_DAYS,
+                "mlflow_max_age_days": CLEANUP_MLFLOW_MAX_AGE_DAYS,
+                "disk_threshold_percent": CLEANUP_DISK_THRESHOLD_PERCENT,
+                "dry_run": False,
+            },
+        )
+    else:
+        logger.info("Automatic cleanup is disabled (CLEANUP_ENABLED=false)")
 
     scheduler.start()
 

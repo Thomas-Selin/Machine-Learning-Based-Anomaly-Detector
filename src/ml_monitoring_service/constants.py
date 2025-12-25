@@ -119,3 +119,40 @@ RECALCULATE_THRESHOLD_ON_INFERENCE = (
 
 # Max number of epochs the training goes on for. Might stop earlier because of early-stopping mechanism
 MAX_EPOCHS = int(os.getenv("MAX_EPOCHS", 20))
+
+# ============================================================================
+# Scheduler config
+# ============================================================================
+
+# Maximum number of concurrent job instances
+SCHEDULER_MAX_INSTANCES = int(os.getenv("SCHEDULER_MAX_INSTANCES", "1"))
+
+# Number of worker threads for background scheduler
+SCHEDULER_MAX_WORKERS = int(os.getenv("SCHEDULER_MAX_WORKERS", "5"))
+
+# Job coalescing: skip jobs if previous run is still active
+SCHEDULER_COALESCE = os.getenv("SCHEDULER_COALESCE", "true").lower() == "true"
+
+# Maximum job execution time in seconds (1 hour default)
+SCHEDULER_MAX_EXECUTION_TIME = int(os.getenv("SCHEDULER_MAX_EXECUTION_TIME", "3600"))
+
+# ============================================================================
+# Memory Management / Cleanup config
+# ============================================================================
+
+# Enable automatic cleanup of old artifacts
+CLEANUP_ENABLED = os.getenv("CLEANUP_ENABLED", "true").lower() == "true"
+
+# Maximum age in days for output files before cleanup
+CLEANUP_MAX_AGE_DAYS = int(os.getenv("CLEANUP_MAX_AGE_DAYS", "30"))
+
+# Maximum age in days for MLflow runs before cleanup
+CLEANUP_MLFLOW_MAX_AGE_DAYS = int(os.getenv("CLEANUP_MLFLOW_MAX_AGE_DAYS", "90"))
+
+# Disk usage threshold percentage to trigger cleanup
+CLEANUP_DISK_THRESHOLD_PERCENT = float(
+    os.getenv("CLEANUP_DISK_THRESHOLD_PERCENT", "85.0")
+)
+
+# Cleanup schedule (cron expression, default: daily at 2 AM)
+CLEANUP_SCHEDULE_HOUR = int(os.getenv("CLEANUP_SCHEDULE_HOUR", "2"))
