@@ -7,12 +7,84 @@ import torch
 from torch.utils.data import Dataset
 
 import ml_monitoring_service.configuration as conf
-from ml_monitoring_service.data_validation import (
-    validate_combined_dataset,
-    validate_model_input,
-)
 
 logger = logging.getLogger(__name__)
+
+
+class DataValidationError(Exception):
+    """Raised when data validation fails."""
+
+    pass
+
+
+def validate_combined_dataset(df: pd.DataFrame, expected_services: list[str]) -> None:
+    """Validate combined dataset before model training/inference.
+
+    Args:
+        df: Combined dataset DataFrame
+        expected_services: List of expected service names
+
+    Raises:
+        DataValidationError: If validation fails
+    """
+    # Validate required columns
+    required_columns = ["timestamp", "service", "timestamp_nanoseconds"]
+    missing_columns = set(required_columns) - set(df.columns)
+    if missing_columns:
+        raise DataValidationError(
+            f"DataFrame missing required columns: {missing_columns}"
+        )
+
+    # Check all expected services are present
+    actual_services = set(df["service"].unique())
+    missing_services = set(expected_services) - actual_services
+    if missing_services:
+        logger.warning(
+            f"Missing data for services: {missing_services}. "
+            "This may affect model training/inference quality."
+        )
+
+    extra_services = actual_services - set(expected_services)
+    if extra_services:
+        logger.warning(f"Unexpected services in dataset: {extra_services}")
+
+
+def validate_model_input(
+    data: np.ndarray, expected_shape: tuple[int, int, int], service_names: list[str]
+) -> None:
+    """Validate model input data shape and content.
+
+    Args:
+        data: Input data array
+        expected_shape: Expected shape tuple (timesteps, services, features)
+        service_names: List of service names for context
+
+    Raises:
+        DataValidationError: If validation fails
+    """
+    if not isinstance(data, np.ndarray):
+        raise DataValidationError(f"Model input must be numpy array, got {type(data)}")
+
+    if data.shape != expected_shape:
+        raise DataValidationError(
+            f"Model input shape {data.shape} doesn't match expected {expected_shape}"
+        )
+
+    # Check for NaN/Inf
+    if np.isnan(data).any():
+        nan_count = np.isnan(data).sum()
+        raise DataValidationError(
+            f"Model input contains {nan_count} NaN values. Data must be cleaned before inference."
+        )
+
+    if np.isinf(data).any():
+        raise DataValidationError(
+            "Model input contains infinite values. Data must be cleaned before inference."
+        )
+
+    logger.debug(
+        f"Model input validated: shape={data.shape}, services={len(service_names)}"
+    )
 
 
 def ensure_timestamp_nanoseconds_ns(df: pd.DataFrame) -> np.ndarray:

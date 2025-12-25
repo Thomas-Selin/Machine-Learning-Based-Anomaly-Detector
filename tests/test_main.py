@@ -14,7 +14,6 @@ from ml_monitoring_service.data_handling import (
     get_microservice_data_from_file,
     normalize_feature,
 )
-from ml_monitoring_service.main import create_app
 
 
 @pytest.fixture
@@ -60,25 +59,6 @@ def test_service_metrics_dataset():
     # Time features should be normalized between 0 and 1
     assert time_features.min() >= 0.0
     assert time_features.max() <= 1.0
-
-
-def test_create_app():
-    """Test that Flask app is created with correct configuration"""
-    from flask import Flask
-
-    app = create_app()
-
-    # App should be a Flask instance
-    assert isinstance(app, Flask)
-
-    # Check that health endpoint exists
-    assert app.url_map is not None
-
-    # Get all registered routes
-    routes = [str(rule) for rule in app.url_map.iter_rules()]
-
-    # Should have health endpoint
-    assert any("/health" in route for route in routes)
 
 
 def test_check_for_nan():

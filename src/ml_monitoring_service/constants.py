@@ -135,24 +135,3 @@ SCHEDULER_COALESCE = os.getenv("SCHEDULER_COALESCE", "true").lower() == "true"
 
 # Maximum job execution time in seconds (1 hour default)
 SCHEDULER_MAX_EXECUTION_TIME = int(os.getenv("SCHEDULER_MAX_EXECUTION_TIME", "3600"))
-
-# ============================================================================
-# Memory Management / Cleanup config
-# ============================================================================
-
-# Enable automatic cleanup of old artifacts
-CLEANUP_ENABLED = os.getenv("CLEANUP_ENABLED", "true").lower() == "true"
-
-# Maximum age in days for output files before cleanup
-CLEANUP_MAX_AGE_DAYS = int(os.getenv("CLEANUP_MAX_AGE_DAYS", "30"))
-
-# Maximum age in days for MLflow runs before cleanup
-CLEANUP_MLFLOW_MAX_AGE_DAYS = int(os.getenv("CLEANUP_MLFLOW_MAX_AGE_DAYS", "90"))
-
-# Disk usage threshold percentage to trigger cleanup
-CLEANUP_DISK_THRESHOLD_PERCENT = float(
-    os.getenv("CLEANUP_DISK_THRESHOLD_PERCENT", "85.0")
-)
-
-# Cleanup schedule (cron expression, default: daily at 2 AM)
-CLEANUP_SCHEDULE_HOUR = int(os.getenv("CLEANUP_SCHEDULE_HOUR", "2"))

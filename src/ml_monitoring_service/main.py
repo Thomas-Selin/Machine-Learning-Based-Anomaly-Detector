@@ -22,13 +22,7 @@ load_dotenv(find_dotenv())
 import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.anomaly_analyser import analyse_anomalies
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
-from ml_monitoring_service.circuit_breaker import circuit_breaker
 from ml_monitoring_service.constants import (
-    CLEANUP_DISK_THRESHOLD_PERCENT,
-    CLEANUP_ENABLED,
-    CLEANUP_MAX_AGE_DAYS,
-    CLEANUP_MLFLOW_MAX_AGE_DAYS,
-    CLEANUP_SCHEDULE_HOUR,
     DEFAULT_TRAINING_INTERVAL_MINUTES,
     DOWNLOAD_ENABLED,
     INFERENCE_DELAY_OFFSET_MINUTES,
@@ -53,7 +47,6 @@ from ml_monitoring_service.data_handling import (
     get_ordered_timepoints,
     get_timestamp_of_latest_data,
 )
-from ml_monitoring_service.memory_management import perform_maintenance_cleanup
 from ml_monitoring_service.model_building import create_and_train_model
 from ml_monitoring_service.utils import (
     ConditionalFormatter,
@@ -68,38 +61,28 @@ logging.basicConfig(level=getattr(logging, LOG_LEVEL), handlers=[handler])
 logger = logging.getLogger(__name__)
 
 
-# Circuit-breaker-protected wrappers for external services
-@circuit_breaker(
-    failure_threshold=3,
-    timeout=300,  # 5 minutes
-    expected_exception=(requests.RequestException, ConnectionError, TimeoutError),
-    fallback_return=None,
-)
 def safe_download_splunk_data(mode: str, active_set: str, age: str | None) -> None:
-    """Download Splunk data with circuit breaker protection."""
-    download_splunk_data(mode, active_set, age)
+    """Download Splunk data with error handling."""
+    try:
+        download_splunk_data(mode, active_set, age)
+    except (requests.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(f"Failed to download Splunk data for {active_set}: {e}")
 
 
-@circuit_breaker(
-    failure_threshold=3,
-    timeout=300,
-    expected_exception=(requests.RequestException, ConnectionError, TimeoutError),
-    fallback_return=None,
-)
 def safe_download_prometheus_data(mode: str, active_set: str) -> None:
-    """Download Prometheus data with circuit breaker protection."""
-    download_prometheus_data(mode, active_set)
+    """Download Prometheus data with error handling."""
+    try:
+        download_prometheus_data(mode, active_set)
+    except (requests.RequestException, ConnectionError, TimeoutError) as e:
+        logger.error(f"Failed to download Prometheus data for {active_set}: {e}")
 
 
-@circuit_breaker(
-    failure_threshold=3,
-    timeout=300,
-    expected_exception=(OSError, ValueError),
-    fallback_return=None,
-)
 def safe_combine_services(mode: str, active_set: str, age: str | None) -> None:
-    """Combine service data with circuit breaker protection."""
-    combine_services(mode, active_set, age)
+    """Combine service data with error handling."""
+    try:
+        combine_services(mode, active_set, age)
+    except (OSError, ValueError) as e:
+        logger.error(f"Failed to combine services for {active_set}: {e}")
 
 
 def _try_restore_model_from_mlflow(active_set: str, model_filename: str) -> bool:
@@ -570,29 +553,6 @@ if __name__ == "__main__":
         )
         delay += INFERENCE_DELAY_OFFSET_MINUTES
         logger.info(f"Training and inference scheduled for '{active_set}' service set.")
-
-    # Schedule cleanup job if enabled
-    if CLEANUP_ENABLED:
-        logger.info(
-            f"Scheduling daily cleanup at {CLEANUP_SCHEDULE_HOUR}:00 "
-            f"(max_age={CLEANUP_MAX_AGE_DAYS}d, mlflow_max_age={CLEANUP_MLFLOW_MAX_AGE_DAYS}d, "
-            f"disk_threshold={CLEANUP_DISK_THRESHOLD_PERCENT}%)"
-        )
-        scheduler.add_job(
-            name="maintenance_cleanup",
-            func=perform_maintenance_cleanup,
-            trigger="cron",
-            hour=CLEANUP_SCHEDULE_HOUR,
-            minute=0,
-            kwargs={
-                "max_age_days": CLEANUP_MAX_AGE_DAYS,
-                "mlflow_max_age_days": CLEANUP_MLFLOW_MAX_AGE_DAYS,
-                "disk_threshold_percent": CLEANUP_DISK_THRESHOLD_PERCENT,
-                "dry_run": False,
-            },
-        )
-    else:
-        logger.info("Automatic cleanup is disabled (CLEANUP_ENABLED=false)")
 
     scheduler.start()
 
