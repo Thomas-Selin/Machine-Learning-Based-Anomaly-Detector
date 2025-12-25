@@ -15,7 +15,6 @@ import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.constants import PROMETHEUS_URL, REQUESTS_VERIFY
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Disable SSL warnings only if TLS verification is disabled (dev/local).
 if not REQUESTS_VERIFY:

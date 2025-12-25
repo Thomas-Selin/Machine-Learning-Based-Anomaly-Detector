@@ -22,7 +22,6 @@ if not REQUESTS_VERIFY:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Constants
 BATCH_LIMIT = 50000  # Splunk's max_events_per_bucket limit
