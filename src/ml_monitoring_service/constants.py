@@ -35,6 +35,9 @@ SPLUNK_HEC_TOKEN = os.getenv("SPLUNK_HEC_TOKEN")
 DATA_SUBSET = os.getenv("SUBSET")
 DATA_SAMPLING = os.getenv("SAMPLING")
 
+# Training configuration
+MAX_EPOCHS = int(os.getenv("MAX_EPOCHS", "100"))
+
 
 # ============================================================================
 # ANSI Color Codes
