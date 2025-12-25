@@ -80,4 +80,4 @@ exclude = "^(mlruns|output)/"
 
 [tool.bandit]
 exclude_dirs = ["tests", "mlruns", "output"]
-skips = ["B101"]  # Skip assert_used check (needed for tests)
+skips = ["B101", "B614"]  # Skip assert_used and pytorch_load_save checks

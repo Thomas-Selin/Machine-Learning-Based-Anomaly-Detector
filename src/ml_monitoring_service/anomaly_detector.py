@@ -232,6 +232,13 @@ class AnomalyDetector:
                 # Set threshold before saving (use aligned timepoints for correct time features)
                 self.set_threshold(val_data, timepoints=val_timestamps)
 
+                # Generate model version (timestamp-based for uniqueness)
+                from datetime import datetime
+
+                model_version = datetime.now().strftime("%Y%m%d_%H%M%S")
+                mlflow.set_tag("model_version", model_version)
+                mlflow.set_tag("service_set", active_set)
+
                 # Save model checkpoint to temp file and log to MLflow
                 with tempfile.NamedTemporaryFile(
                     mode="wb", suffix=".pth", delete=False
@@ -243,6 +250,8 @@ class AnomalyDetector:
                             "num_services": self.num_services,
                             "num_features": self.num_features,
                             "window_size": self.window_size,
+                            "model_version": model_version,
+                            "training_date": datetime.now().isoformat(),
                         },
                         tmp,
                     )
@@ -256,6 +265,13 @@ class AnomalyDetector:
                 shutil.copy(temp_model_path, model_path)
                 logger.info(
                     f"Best model saved to {model_path} (local cache) with threshold: {self.threshold:.6f}"
+                )
+                logger.info(f"Model version: {model_version}")
+
+                # Log model artifact to MLflow with versioning
+                mlflow.log_artifact(temp_model_path, artifact_path="model")
+                logger.info(
+                    f"Model artifact logged to MLflow with version {model_version}"
                 )
 
                 # Clean up temp file
