@@ -126,14 +126,10 @@ def load_model(
 
     logger.info(f"Memory usage before loading model: {get_memory_usage()}")
 
-    # Security note: torch.load with weights_only=False can execute arbitrary code.
-    # Only load models from trusted sources (your own training runs or verified artifacts).
-    # For additional safety in production, consider:
-    # - Validating checkpoint signatures/hashes before loading
-    # - Using weights_only=True if model architecture is known
-    # - Sandboxing model loading in isolated environments
+    # Security: Use weights_only=True to prevent arbitrary code execution.
+    # This is safe because we only need the model state dict and metadata (not custom objects).
     try:
-        checkpoint = torch.load(model_filename, weights_only=False, map_location="cpu")
+        checkpoint = torch.load(model_filename, weights_only=True, map_location="cpu")
 
         # Validate checkpoint structure
         required_keys = {
