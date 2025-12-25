@@ -12,7 +12,11 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 import ml_monitoring_service.configuration as conf
-from ml_monitoring_service.constants import PROMETHEUS_URL, REQUESTS_VERIFY
+from ml_monitoring_service.constants import (
+    PROMETHEUS_TIMEOUT,
+    PROMETHEUS_URL,
+    REQUESTS_VERIFY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +25,6 @@ if not REQUESTS_VERIFY:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Constants
-REQUEST_TIMEOUT = 900  # seconds
 SLEEP_INTERVAL = 0.05  # seconds between requests
 MAX_RETRIES = 15
 RETRY_BACKOFF_FACTOR = 2
@@ -65,7 +68,7 @@ def query_prometheus(
                 f"{PROMETHEUS_URL}/api/v1/query",
                 params={"query": query, "time": timestamp},
                 verify=REQUESTS_VERIFY,
-                timeout=REQUEST_TIMEOUT,
+                timeout=PROMETHEUS_TIMEOUT,
             )
             response.raise_for_status()
 

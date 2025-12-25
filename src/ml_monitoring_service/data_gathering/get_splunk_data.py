@@ -14,6 +14,7 @@ from ml_monitoring_service.constants import (
     DATA_SUBSET,
     REQUESTS_VERIFY,
     SPLUNK_AUTH_TOKEN,
+    SPLUNK_TIMEOUT,
     SPLUNK_URL,
 )
 
@@ -63,7 +64,7 @@ def check_authentication() -> bool:
             f"{SPLUNK_URL}/services/authentication/current-context?output_mode=json",
             headers=_get_auth_headers(),
             verify=REQUESTS_VERIFY,
-            timeout=30,
+            timeout=SPLUNK_TIMEOUT,
         )
         if response.status_code == 200:
             logger.debug("Authentication verified.")
@@ -101,7 +102,7 @@ def start_search(search_query: str) -> str | None:
             headers=_get_auth_headers(),
             data=data,
             verify=REQUESTS_VERIFY,
-            timeout=30,
+            timeout=SPLUNK_TIMEOUT,
         )
         logger.debug(f"Search started, status code: {response.status_code}")
         response.raise_for_status()
@@ -183,7 +184,7 @@ def get_search_results(job_id: str) -> list[dict[str, Any]] | None:
                     f"{SPLUNK_URL}/services/search/jobs/{job_id}?output_mode=json",
                     headers=_get_auth_headers(),
                     verify=REQUESTS_VERIFY,
-                    timeout=30,
+                    timeout=SPLUNK_TIMEOUT,
                 )
                 response.raise_for_status()
                 job_data = response.json()
@@ -280,7 +281,7 @@ def delete_search_job(job_id: str) -> bool:
             f"{SPLUNK_URL}/services/search/jobs/{job_id}?output_mode=json",
             headers=_get_auth_headers(),
             verify=REQUESTS_VERIFY,
-            timeout=30,
+            timeout=SPLUNK_TIMEOUT,
         )
         if response.status_code == 200:
             logger.debug(f"Successfully deleted job {job_id}")
@@ -312,7 +313,7 @@ def cleanup_all_search_jobs() -> int:
             f"{SPLUNK_URL}/services/authentication/current-context?output_mode=json",
             headers=_get_auth_headers(),
             verify=REQUESTS_VERIFY,
-            timeout=30,
+            timeout=SPLUNK_TIMEOUT,
         )
 
         if user_response.status_code != 200:
@@ -338,7 +339,7 @@ def cleanup_all_search_jobs() -> int:
                 f"{SPLUNK_URL}/services/search/jobs?output_mode=json&username={username}",
                 headers=_get_auth_headers(),
                 verify=REQUESTS_VERIFY,
-                timeout=30,
+                timeout=SPLUNK_TIMEOUT,
             )
 
             if response.status_code != 200:

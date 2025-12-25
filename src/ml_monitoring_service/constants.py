@@ -96,7 +96,13 @@ DEFAULT_TRAINING_INTERVAL_MINUTES = 45
 # ============================================================================
 
 # Request timeout for external API calls (in seconds)
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
+
+# Prometheus-specific timeout (for long-running queries)
+PROMETHEUS_TIMEOUT = int(os.getenv("PROMETHEUS_TIMEOUT", "900"))
+
+# Splunk-specific timeout
+SPLUNK_TIMEOUT = int(os.getenv("SPLUNK_TIMEOUT", "30"))
 
 # Whether requests should verify TLS certificates (recommended true in production).
 # Set REQUESTS_VERIFY=false for local testing with self-signed certs.
