@@ -38,6 +38,11 @@ DATA_SAMPLING = os.getenv("SAMPLING")
 # Training configuration
 MAX_EPOCHS = int(os.getenv("MAX_EPOCHS", "100"))
 
+# Active service sets configuration
+# Comma-separated list of service sets to activate (e.g., "default,transfer")
+# If not set, all available service sets from service_sets.yaml will be activated
+ACTIVE_SERVICE_SETS = os.getenv("ACTIVE_SERVICE_SETS")
+
 
 # ============================================================================
 # ANSI Color Codes

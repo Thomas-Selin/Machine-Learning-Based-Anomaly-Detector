@@ -100,7 +100,22 @@ class ConfigLoader:
         """
         self.config_path = Path(config_path) if config_path else None
         self._load_config()
-        self.active_sets = ["default", "transfer"]
+        # Initialize active_sets from environment variable or use all available sets
+        from ml_monitoring_service.constants import ACTIVE_SERVICE_SETS
+
+        if ACTIVE_SERVICE_SETS:
+            # Parse comma-separated list from environment
+            requested_sets = [s.strip() for s in ACTIVE_SERVICE_SETS.split(",")]
+            # Validate all requested sets exist
+            for service_set in requested_sets:
+                if service_set not in self.service_sets:
+                    raise ValueError(
+                        f"Service set '{service_set}' specified in ACTIVE_SERVICE_SETS not found in configuration"
+                    )
+            self.active_sets = requested_sets
+        else:
+            # Default to all available service sets
+            self.active_sets = list(self.service_sets.keys())
 
     def _load_config(self) -> None:
         """Load and parse the configuration file
