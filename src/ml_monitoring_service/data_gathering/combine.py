@@ -9,9 +9,7 @@ import ml_monitoring_service.configuration as conf
 logger = logging.getLogger(__name__)
 
 
-def combine_services(
-    task: str, active_set: str, age_latest_data: datetime | None
-) -> None:
+def combine_services(task: str, active_set: str, age_latest_data: str | None) -> None:
     """Combine Prometheus and Splunk data for the specified service set
 
     Args:

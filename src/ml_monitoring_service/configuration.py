@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -90,15 +91,14 @@ class ConfigLoader:
         active_sets: List of currently active service set names
     """
 
-    def __init__(
-        self, config_path: str = "src/ml_monitoring_service/resources/service_sets.yaml"
-    ):
+    def __init__(self, config_path: str | None = None):
         """Initialize the ConfigLoader with the specified configuration file
 
         Args:
-            config_path: Path to the service sets YAML configuration file
+            config_path: Optional filesystem path to YAML config (for testing/override).
+                        If None, loads from package resources.
         """
-        self.config_path = Path(config_path)
+        self.config_path = Path(config_path) if config_path else None
         self._load_config()
         self.active_sets = ["default", "transfer"]
 
@@ -109,11 +109,19 @@ class ConfigLoader:
             FileNotFoundError: If the configuration file doesn't exist
             ValueError: If the configuration file is invalid
         """
-        if not self.config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {self.config_path}")
-
-        with open(self.config_path) as f:
-            self.config: dict[str, Any] = yaml.safe_load(f)
+        if self.config_path:
+            # Explicit path provided (testing/dev override)
+            if not self.config_path.exists():
+                raise FileNotFoundError(f"Config file not found: {self.config_path}")
+            with open(self.config_path) as f:
+                self.config: dict[str, Any] = yaml.safe_load(f)
+        else:
+            # Load from package resources
+            resource = files("ml_monitoring_service").joinpath(
+                "resources/service_sets.yaml"
+            )
+            with resource.open("r") as f:
+                self.config: dict[str, Any] = yaml.safe_load(f)
 
         if "service_sets" not in self.config:
             raise ValueError("Config file must contain 'service_sets' key")

@@ -1,6 +1,7 @@
 import copy
 import logging
 from contextlib import nullcontext
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -83,12 +84,15 @@ class AnomalyDetector:
         )
 
         # Import here to avoid circular dependency
+        import tempfile
+
         import mlflow
+        import mlflow.pytorch
 
         from ml_monitoring_service.visualisation import save_data_to_mlflow
 
-        # Enable MLflow autologging
-        mlflow.pytorch.autolog()
+        # Enable MLflow autologging for PyTorch
+        mlflow.pytorch.autolog(log_models=False, log_every_n_epoch=1)  # type: ignore[attr-defined]
 
         # Reuse an existing MLflow run if one is already active (e.g. started in model_building).
         run_ctx = nullcontext()
@@ -109,25 +113,25 @@ class AnomalyDetector:
             # Save training data to MLflow
             save_data_to_mlflow(df, "train_dataframe_mlflow.json", active_set)
 
-            # Save the exact training data used for model training to a file
-            train_data_path = f"output/{active_set}/train_data.npy"
-            val_data_path = f"output/{active_set}/val_data.npy"
-            np.save(train_data_path, train_data)
-            np.save(val_data_path, val_data)
-
-            # Log the training data as artifacts in MLflow
+            # Log training/val data arrays and metadata directly to MLflow using temp files
             if mlflow.active_run():
-                mlflow.log_artifact(train_data_path, artifact_path="data")
-                mlflow.log_artifact(val_data_path, artifact_path="data")
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    train_data_path = Path(tmpdir) / "train_data.npy"
+                    val_data_path = Path(tmpdir) / "val_data.npy"
+                    service_names_path = Path(tmpdir) / "service_names.txt"
+
+                    np.save(train_data_path, train_data)
+                    np.save(val_data_path, val_data)
+                    service_names_path.write_text(
+                        "\n".join(conf.get_services(active_set))
+                    )
+
+                    mlflow.log_artifact(str(train_data_path), artifact_path="data")
+                    mlflow.log_artifact(str(val_data_path), artifact_path="data")
+                    mlflow.log_artifact(str(service_names_path), artifact_path="data")
+
                 logger.info(
                     "Successfully logged training and validation data to MLflow"
-                )
-
-                # Also save service names for reference
-                with open(f"output/{active_set}/service_names.txt", "w") as f:
-                    f.write("\n".join(conf.get_services(active_set)))
-                mlflow.log_artifact(
-                    f"output/{active_set}/service_names.txt", artifact_path="data"
                 )
 
             # Align timestamps to the model time axis (unique ordered timepoints)
@@ -228,26 +232,40 @@ class AnomalyDetector:
                 # Set threshold before saving (use aligned timepoints for correct time features)
                 self.set_threshold(val_data, timepoints=val_timestamps)
 
-                # Save the best model to disk with threshold
+                # Save model checkpoint to temp file and log to MLflow
+                with tempfile.NamedTemporaryFile(
+                    mode="wb", suffix=".pth", delete=False
+                ) as tmp:
+                    torch.save(
+                        {
+                            "model_state_dict": best_model_state,
+                            "threshold": self.threshold,
+                            "num_services": self.num_services,
+                            "num_features": self.num_features,
+                            "window_size": self.window_size,
+                        },
+                        tmp,
+                    )
+                    temp_model_path = tmp.name
+
+                # Also save to output/ as a local cache for convenience
                 model_path = f"output/{active_set}/best_model_{active_set}.pth"
-                torch.save(
-                    {
-                        "model_state_dict": best_model_state,
-                        "threshold": self.threshold,
-                        "num_services": self.num_services,
-                        "num_features": self.num_features,
-                        "window_size": self.window_size,
-                    },
-                    model_path,
-                )
+                Path(model_path).parent.mkdir(parents=True, exist_ok=True)
+                import shutil
+
+                shutil.copy(temp_model_path, model_path)
                 logger.info(
-                    f"Best model saved to {model_path} with threshold: {self.threshold:.6f}"
+                    f"Best model saved to {model_path} (local cache) with threshold: {self.threshold:.6f}"
                 )
+
+                # Clean up temp file
+                Path(temp_model_path).unlink()
 
             # Log the threshold
             self.set_threshold(val_data, timepoints=val_timestamps)
-            mlflow.log_metric("anomaly_threshold", self.threshold)
-            logger.info(f"Anomaly detection threshold set to: {self.threshold:.6f}")
+            if self.threshold is not None:
+                mlflow.log_metric("anomaly_threshold", float(self.threshold))
+                logger.info(f"Anomaly detection threshold set to: {self.threshold:.6f}")
             logger.info(f"\n{self.model}\n")
 
     def set_threshold(self, validation_data, df=None, timepoints=None, percentile=99):
@@ -274,7 +292,7 @@ class AnomalyDetector:
             ).values
 
         dataset = ServiceMetricsDataset(
-            validation_data, val_timestamps, self.window_size
+            validation_data, pd.Series(val_timestamps), self.window_size
         )
         dataloader = DataLoader(dataset, batch_size=32)
 
@@ -334,12 +352,18 @@ class AnomalyDetector:
             error_scalar = torch.mean(error).item()
             service_errors = torch.mean((x - output) ** 2, dim=(0, 1, 3)).cpu().numpy()
             variable_errors = torch.mean((x - output) ** 2, dim=(0, 1, 2)).cpu().numpy()
+
+            if self.threshold is None:
+                raise ValueError(
+                    "Threshold not set. Call set_threshold() before detect()."
+                )
+
             is_anomaly = error_scalar > self.threshold
 
             return {
                 "is_anomaly": bool(is_anomaly),
                 "error_score": error_scalar,
-                "threshold": self.threshold,
+                "threshold": float(self.threshold),
                 "service_errors": service_errors,
                 "variable_errors": variable_errors,
                 "timestamp": timestamp,

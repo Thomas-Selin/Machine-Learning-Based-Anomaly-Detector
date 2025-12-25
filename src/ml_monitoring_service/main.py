@@ -70,21 +70,22 @@ def _try_restore_model_from_mlflow(active_set: str, model_filename: str) -> bool
             return False
 
         run_name = f"Model training: {active_set}-microservice-set"
-        runs = mlflow.search_runs(
+        from mlflow.tracking import MlflowClient
+
+        client = MlflowClient()
+        runs = client.search_runs(
             experiment_ids=[experiment.experiment_id],
             filter_string=f"tags.mlflow.runName = '{run_name}'",
             order_by=["attributes.start_time DESC"],
             max_results=1,
         )
-        if runs.empty:
+        if not runs:
             logger.info(f"No MLflow training runs found for '{active_set}'.")
             return False
 
-        run_id = runs.iloc[0]["run_id"]
+        run_id = runs[0].info.run_id
         artifact_rel = f"model/best_model_{active_set}.pth"
-        downloaded = mlflow.artifacts.download_artifacts(
-            run_id=run_id, artifact_path=artifact_rel
-        )
+        downloaded = client.download_artifacts(run_id=run_id, path=artifact_rel)
 
         Path(model_filename).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(downloaded, model_filename)
@@ -102,7 +103,7 @@ def load_model(
     num_features: int,
     num_services: int,
     config: conf.ServiceSetConfig,
-    override_threshold: float = None,
+    override_threshold: float | None = None,
 ) -> AnomalyDetector:
     """Load a trained model from disk
 
@@ -125,8 +126,26 @@ def load_model(
 
     logger.info(f"Memory usage before loading model: {get_memory_usage()}")
 
+    # Security note: torch.load with weights_only=False can execute arbitrary code.
+    # Only load models from trusted sources (your own training runs or verified artifacts).
+    # For additional safety in production, consider:
+    # - Validating checkpoint signatures/hashes before loading
+    # - Using weights_only=True if model architecture is known
+    # - Sandboxing model loading in isolated environments
     try:
         checkpoint = torch.load(model_filename, weights_only=False, map_location="cpu")
+
+        # Validate checkpoint structure
+        required_keys = {
+            "model_state_dict",
+            "threshold",
+            "num_services",
+            "num_features",
+            "window_size",
+        }
+        missing_keys = required_keys - set(checkpoint.keys())
+        if missing_keys:
+            raise ValueError(f"Checkpoint missing required keys: {missing_keys}")
 
         window_size = checkpoint.get("window_size", config.window_size)
 
@@ -142,7 +161,9 @@ def load_model(
 
         # Use override threshold if provided, otherwise use saved threshold
         if override_threshold is not None:
-            detector.threshold = override_threshold
+            import numpy as np
+
+            detector.threshold = np.float64(override_threshold)
             logger.info(
                 f"Using override threshold: {override_threshold:.6f} (saved threshold was: {checkpoint['threshold']:.6f})"
             )
@@ -254,7 +275,7 @@ def inference(active_set: str, model_filename: str) -> None:
             detector.set_threshold(
                 data,
                 timepoints=timepoints,
-                percentile=config.anomaly_threshold_percentile,
+                percentile=int(config.anomaly_threshold_percentile),
             )
             logger.info(f"New threshold: {detector.threshold}")
         else:
@@ -348,7 +369,9 @@ def inference(active_set: str, model_filename: str) -> None:
         logger.info("Visualizing microservice graph...")
         result_graph_path = f"output/{active_set}/microservice_graph_with_results.png"
         visualize_microservice_graph(
-            config.relationships, result_graph_path, service_errors
+            config.relationships,
+            result_graph_path,
+            {k: float(v) for k, v in service_errors.items()},
         )
         if os.path.exists(result_graph_path):
             mlflow.log_artifact(result_graph_path)
