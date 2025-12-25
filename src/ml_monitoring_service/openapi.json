@@ -1,0 +1,90 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "ML Based Anomaly Detector API",
+    "description": "API for monitoring and detecting anomalies in microservice metrics using machine learning",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Thomas Selin"
+    },
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/ml-based-anomaly-detector/admin/healthcheck": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Health check endpoint",
+        "description": "Returns the health status of the service",
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "up"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ml-based-anomaly-detector/version": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Get Python version",
+        "description": "Returns the Python version running the service",
+        "operationId": "getVersion",
+        "responses": {
+          "200": {
+            "description": "Python version information",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "Python Version: 3.12.12"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Admin",
+      "description": "Administrative and monitoring endpoints"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "HealthStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["up", "down"],
+            "description": "Health status of the service"
+          }
+        },
+        "required": ["status"]
+      }
+    }
+  }
+}

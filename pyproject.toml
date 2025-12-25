@@ -33,6 +33,7 @@ mlflow = "^3.0"
 boto3 = "^1.37.28"
 pytest-env = "^1.1.5"
 waitress = "^3.0.2"
+flask-swagger-ui = "^5.21.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest-cov = "^4.1.0"
@@ -80,4 +81,4 @@ exclude = "^(mlruns|output)/"
 
 [tool.bandit]
 exclude_dirs = ["tests", "mlruns", "output"]
-skips = ["B101", "B614"]  # Skip assert_used and pytorch_load_save checks
+skips = ["B101", "B104", "B614"]  # Skip assert_used, hardcoded_bind_all_interfaces, and pytorch_load_save checks

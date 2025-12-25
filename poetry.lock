@@ -1035,6 +1035,21 @@ flask = ">=0.9"
 Werkzeug = ">=0.7"
 
 [[package]]
+name = "flask-swagger-ui"
+version = "5.21.0"
+description = "Swagger UI blueprint for Flask"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "flask_swagger_ui-5.21.0-py3-none-any.whl", hash = "sha256:5ecff6c284d7c5559f3473bd534a31fa5dfc0022502d63f4a04728c2b10596f6"},
+    {file = "flask_swagger_ui-5.21.0.tar.gz", hash = "sha256:872d038dc11a68eacab88f6f05be3c533aa300453e273775dad3e029b31e03d4"},
+]
+
+[package.dependencies]
+flask = "*"
+
+[[package]]
 name = "fonttools"
 version = "4.60.1"
 description = "Tools to manipulate font files"
@@ -4778,4 +4793,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "94a6ebce1eb8b0fcf46c5fe0fe6b0849d10f991f475e4cd1695479444de022bb"
+content-hash = "f4bfacfbd38142f7175a6c2cb0e5a67b20cf1918e7a3a877854d4f92bfa07fc5"

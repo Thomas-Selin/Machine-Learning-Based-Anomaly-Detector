@@ -14,6 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # Load environment variables BEFORE importing any modules that use them
 from dotenv import find_dotenv, load_dotenv
 from flask import Flask, Response, jsonify
+from flask_swagger_ui import get_swaggerui_blueprint
 from waitress import serve
 
 load_dotenv(find_dotenv())
@@ -401,12 +402,34 @@ def create_app() -> Flask:
 
     app.logger.addFilter(health_check_filter)
 
+    # Swagger UI configuration
+    SWAGGER_URL = "/ml-based-anomaly-detector/api/docs"
+    API_URL = "/ml-based-anomaly-detector/api/openapi.json"
+
+    swaggerui_blueprint = get_swaggerui_blueprint(
+        SWAGGER_URL,
+        API_URL,
+        config={"app_name": "ML Based Anomaly Detector API"},
+    )
+    app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
+
+    @app.route("/ml-based-anomaly-detector/api/openapi.json", methods=["GET"])
+    def openapi_spec():
+        """Serve OpenAPI specification"""
+        from importlib.resources import files
+
+        spec_resource = files("ml_monitoring_service").joinpath("openapi.json")
+        spec_content = spec_resource.read_text()
+        return Response(spec_content, mimetype="application/json")
+
     @app.route("/ml-based-anomaly-detector/admin/healthcheck", methods=["GET"])
     def health() -> Response:
+        """Health check endpoint for monitoring"""
         return jsonify(status="up")
 
     @app.route("/ml-based-anomaly-detector/version", methods=["GET"])
     def version() -> str:
+        """Get Python version information"""
         return "Python Version: " + sys.version
 
     return app
