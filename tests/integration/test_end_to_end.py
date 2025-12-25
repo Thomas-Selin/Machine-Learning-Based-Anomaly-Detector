@@ -9,6 +9,8 @@ from ml_monitoring_service.anomaly_detector import AnomalyDetector
 from ml_monitoring_service.configuration import ConfigLoader
 from ml_monitoring_service.data_handling import convert_to_model_input
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def test_config():
@@ -173,7 +175,7 @@ def test_full_inference_pipeline(sample_inference_data, tmp_path):
     )
 
     # Set a reasonable threshold
-    detector.threshold = np.float64(0.5)
+    detector.threshold = 0.5
 
     # Create sample inference data
     data_array = np.random.rand(40, 3, 6)  # 40 timesteps, 3 services, 6 features
@@ -181,7 +183,7 @@ def test_full_inference_pipeline(sample_inference_data, tmp_path):
 
     # Run detection on a window
     window_data = data_array[0:window_size]
-    result = detector.detect(window_data, timestamps[0])
+    result = detector.detect(window_data, timestamps[0].isoformat())
 
     # Verify result structure
     assert "is_anomaly" in result
@@ -216,7 +218,7 @@ def test_model_save_and_load(tmp_path):
         window_size=window_size,
         config=config,
     )
-    detector1.threshold = np.float64(0.42)
+    detector1.threshold = 0.42
 
     # Save model
     model_path = tmp_path / "test_model.pth"
@@ -249,7 +251,9 @@ def test_model_save_and_load(tmp_path):
     assert detector2.num_services == detector1.num_services
     assert detector2.num_features == detector1.num_features
     assert detector2.window_size == detector1.window_size
-    assert np.isclose(detector2.threshold, detector1.threshold)
+    assert detector1.threshold is not None
+    assert detector2.threshold is not None
+    assert float(detector2.threshold) == pytest.approx(float(detector1.threshold))
 
     # Verify both models produce same output
     test_input = torch.randn(1, window_size, len(services), num_features)
@@ -326,17 +330,17 @@ def test_anomaly_detection_sensitivity():
     )
 
     # Set a moderate threshold
-    detector.threshold = np.float64(0.1)
+    detector.threshold = 0.1
 
     timestamps = pd.date_range(start="2023-01-01", periods=window_size, freq="min")
 
     # Test with normal data
     normal_data = np.random.rand(window_size, 1, num_features) * 0.1
-    result_normal = detector.detect(normal_data, timestamps[0])
+    result_normal = detector.detect(normal_data, timestamps[0].isoformat())
 
     # Test with anomalous data (high values)
     anomalous_data = np.random.rand(window_size, 1, num_features) * 10
-    result_anomalous = detector.detect(anomalous_data, timestamps[0])
+    result_anomalous = detector.detect(anomalous_data, timestamps[0].isoformat())
 
     # Anomalous data should have higher error score
     assert result_anomalous["error_score"] > result_normal["error_score"]

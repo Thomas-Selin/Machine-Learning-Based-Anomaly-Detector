@@ -19,19 +19,13 @@ requests = "2.32.3"
 urllib3 = "2.2.3"
 psutil = "6.1.1"
 torch = "2.5.1"
-torch-geometric = "2.6.1"
 networkx = "3.4.2"
 matplotlib = "3.10.7"
-torchviz = "0.0.2"
-graphviz = "0.20.3"
 apscheduler = "3.11.0"
 flask = "3.1.2"
 pytz = "2024.2"
-torchvision = "0.20.1"
 pyyaml = "6.0.2"
-torchview = "0.2.6"
 mlflow = "3.0.0"
-boto3 = "1.40.48"
 waitress = "3.0.2"
 flask-swagger-ui = "5.21.0"
 
@@ -52,9 +46,13 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-addopts = "--cov=src --cov-branch --cov-report=term-missing tests"
+addopts = "--cov=src --cov-branch --cov-report=term-missing -m 'not integration' tests"
 env = [
-    "MLFLOW_EXPERIMENT_NAME=ML Based Anomaly Detector: Unit/pytest runs"
+  "MLFLOW_EXPERIMENT_NAME=ML Based Anomaly Detector: Unit/pytest runs",
+  "MLFLOW_TRACKING_URI=sqlite:///./mlflow.db",
+]
+markers = [
+  "integration: slower integration tests (skipped by default)",
 ]
 
 [tool.ruff]

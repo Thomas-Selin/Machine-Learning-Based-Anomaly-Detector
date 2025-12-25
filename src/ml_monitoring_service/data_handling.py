@@ -37,13 +37,17 @@ def ensure_timestamp_nanoseconds_ns(df: pd.DataFrame) -> np.ndarray:
     else:
         # Treat as datetime-like (string/datetime).
         dt = pd.to_datetime(series, errors="coerce")
-        ns = pd.Series(dt.view("int64"), index=df.index)
+        # pandas Series.view is deprecated; use astype and preserve NaT as missing.
+        ns = pd.Series(dt.astype("int64"), index=df.index).where(dt.notna())
 
     # Fill rows that couldn't be converted using the parsed timestamp column when available.
     if ns.isna().any() and "timestamp" in df.columns:
         fallback_dt = pd.to_datetime(df["timestamp"], errors="coerce")
         ns = ns.where(
-            ~ns.isna(), other=pd.Series(fallback_dt.view("int64"), index=df.index)
+            ~ns.isna(),
+            other=pd.Series(fallback_dt.astype("int64"), index=df.index).where(
+                fallback_dt.notna()
+            ),
         )
 
     if ns.isna().any():

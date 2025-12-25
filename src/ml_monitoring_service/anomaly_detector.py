@@ -81,17 +81,6 @@ class AnomalyDetector:
             batch_size: Batch size for training
             patience: Early stopping patience
         """
-        """Train the model on normal data with early stopping and learning rate reduction
-
-        Args:
-            train_data: Training data array
-            val_data: Validation data array
-            df: Original DataFrame with timestamps
-            active_set: Name of the service set
-            max_epochs: Maximum number of training epochs
-            batch_size: Batch size for training
-            patience: Early stopping patience (epochs)
-        """
         # Check if datasets are large enough
         min_samples = max(self.window_size + 1, batch_size)
         if len(train_data) <= min_samples:
@@ -304,8 +293,7 @@ class AnomalyDetector:
                 # Clean up temp file
                 Path(temp_model_path).unlink()
 
-            # Log the threshold
-            self.set_threshold(val_data, timepoints=val_timestamps)
+            # Log the already-computed threshold
             if self.threshold is not None:
                 mlflow.log_metric("anomaly_threshold", float(self.threshold))
                 logger.info(f"Anomaly detection threshold set to: {self.threshold:.6f}")

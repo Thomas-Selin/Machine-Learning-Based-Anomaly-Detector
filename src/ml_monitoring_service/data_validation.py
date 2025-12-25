@@ -60,7 +60,11 @@ def validate_metrics_data(df: pd.DataFrame, service_name: str) -> pd.DataFrame:
     # Check for valid timestamps
     if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
         try:
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            # Avoid per-element fallback warning by being explicit about mixed formats.
+            parsed = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
+            if parsed.isna().any():
+                raise ValueError("One or more timestamps could not be parsed")
+            df["timestamp"] = parsed
         except (ValueError, TypeError) as e:
             raise DataValidationError(
                 f"Invalid timestamp format for service {service_name}: {e}"
