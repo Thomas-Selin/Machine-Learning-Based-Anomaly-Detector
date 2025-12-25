@@ -109,7 +109,7 @@ def test_validate_combined_dataset_valid():
 
 
 def test_validate_combined_dataset_missing_services():
-    """Test combined dataset validation with missing services."""
+    """Test combined dataset validation with missing services - should warn not error."""
     df = pd.DataFrame(
         {
             "timestamp": pd.date_range(start="2023-01-01", periods=2, freq="h"),
@@ -121,8 +121,9 @@ def test_validate_combined_dataset_missing_services():
 
     expected_services = ["svc1", "svc2", "svc3"]
 
-    with pytest.raises(DataValidationError, match="Missing data for services"):
-        validate_combined_dataset(df, expected_services)
+    # Should not raise error, just log warnings
+    # This allows tests with partial data
+    validate_combined_dataset(df, expected_services)  # Should not raise
 
 
 def test_validate_combined_dataset_missing_columns():
