@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import mlflow
+import requests
 import torch
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -93,8 +94,11 @@ def _try_restore_model_from_mlflow(active_set: str, model_filename: str) -> bool
             f"Restored model checkpoint from MLflow run {run_id} to {model_filename}"
         )
         return True
-    except Exception as e:
-        logger.warning(f"Failed to restore model from MLflow: {e}")
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        logger.warning(f"Failed to restore model from MLflow (file error): {e}")
+        return False
+    except (KeyError, ValueError) as e:
+        logger.warning(f"Failed to restore model from MLflow (data error): {e}")
         return False
 
 
@@ -176,8 +180,13 @@ def load_model(
     except KeyError as e:
         logger.error(f"Checkpoint missing required key: {e}", exc_info=True)
         raise
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         logger.error(f"Failed to load model from {model_filename}: {e}", exc_info=True)
+        raise
+    except OSError as e:
+        logger.error(
+            f"File I/O error loading model from {model_filename}: {e}", exc_info=True
+        )
         raise
 
 
@@ -222,9 +231,13 @@ def inference(active_set: str, model_filename: str) -> None:
                 logger.warning(
                     "DOWNLOAD env var is set to false, skipping data download"
                 )
-        except Exception as e:
-            logger.error(f"An error occurred during data download: {e}", exc_info=True)
-            mlflow.log_param("inference_error", str(e))
+        except (requests.RequestException, ConnectionError, TimeoutError) as e:
+            logger.error(f"Network error during data download: {e}", exc_info=True)
+            mlflow.log_param("inference_error", f"Network error: {str(e)}")
+            return
+        except (OSError, ValueError) as e:
+            logger.error(f"Data processing error during download: {e}", exc_info=True)
+            mlflow.log_param("inference_error", f"Data error: {str(e)}")
             return
 
         # Read sample data from file
