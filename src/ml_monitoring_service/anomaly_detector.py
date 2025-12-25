@@ -105,8 +105,6 @@ class AnomalyDetector:
         import mlflow
         import mlflow.pytorch
 
-        from ml_monitoring_service.visualisation import save_data_to_mlflow
-
         # Enable MLflow autologging for PyTorch
         mlflow.pytorch.autolog(log_models=False, log_every_n_epoch=1)  # type: ignore[attr-defined]
 
@@ -125,9 +123,6 @@ class AnomalyDetector:
             mlflow.log_param("window_size", self.window_size)
             mlflow.log_param("batch_size", batch_size)
             mlflow.log_param("max_epochs", max_epochs)
-
-            # Save training data to MLflow
-            save_data_to_mlflow(df, "train_dataframe_mlflow.json", active_set)
 
             # Log training/val data arrays and metadata directly to MLflow using temp files
             if mlflow.active_run():

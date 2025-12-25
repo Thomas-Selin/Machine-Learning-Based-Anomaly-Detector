@@ -31,9 +31,9 @@ SPLUNK_URL = os.getenv("SPLUNK_URL")
 SPLUNK_AUTH_TOKEN = os.getenv("SPLUNK_AUTH_TOKEN")
 SPLUNK_HEC_TOKEN = os.getenv("SPLUNK_HEC_TOKEN")
 
-# Data subset/sampling configuration
-DATA_SUBSET = os.getenv("SUBSET")
-DATA_SAMPLING = os.getenv("SAMPLING")
+# Data subset/sampling configuration for testing/development
+DATA_SUBSET = os.getenv("DATA_SUBSET")
+DATA_SAMPLING = os.getenv("DATA_SAMPLING")
 
 # Training configuration
 MAX_EPOCHS = int(os.getenv("MAX_EPOCHS", "100"))

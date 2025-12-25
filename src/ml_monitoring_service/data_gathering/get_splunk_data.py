@@ -553,7 +553,7 @@ def download_splunk_data_in_batches(
             logger.info(f"Applied subset: limited to {subset_size} results")
         except (ValueError, TypeError) as e:
             logger.warning(
-                f"Invalid SUBSET value '{DATA_SUBSET}': {e}. Using all results"
+                f"Invalid DATA_SUBSET value '{DATA_SUBSET}': {e}. Using all results"
             )
     elif DATA_SAMPLING:
         try:
@@ -570,11 +570,11 @@ def download_splunk_data_in_batches(
                 all_results = sampled_results
             else:
                 logger.warning(
-                    f"SAMPLING must be between 0 and 1. Got {sampling_rate}. Using all results"
+                    f"DATA_SAMPLING must be between 0 and 1. Got {sampling_rate}. Using all results"
                 )
         except (ValueError, TypeError) as e:
             logger.warning(
-                f"Invalid SAMPLING value '{DATA_SAMPLING}': {e}. Using all results"
+                f"Invalid DATA_SAMPLING value '{DATA_SAMPLING}': {e}. Using all results"
             )
 
     # Save results to file

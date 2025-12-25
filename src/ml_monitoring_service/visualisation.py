@@ -1,48 +1,12 @@
 import logging
-import os
 
 import matplotlib
 import matplotlib.pyplot
-import mlflow
 import networkx as nx
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 matplotlib.use("Agg")
-
-
-def save_data_to_mlflow(df: pd.DataFrame, file_name: str, active_set: str) -> str:
-    """
-    Save the DataFrame to MLflow as an artifact.
-
-    Args:
-        df (pandas.DataFrame): The DataFrame to save
-        file_name (str): Name to give the saved file
-        active_set (str): The active service set name
-
-    Returns:
-        str: Path to the saved file
-    """
-    logger.info(f"Saving {file_name} to MLflow...")
-
-    # Save DataFrame to a temporary JSON file
-    temp_path = f"output/{active_set}/{file_name}"
-    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-
-    # Save to JSON with proper orientation for easier viewing
-    df.to_json(temp_path, orient="records", date_format="iso")
-
-    # Log the file as an artifact in MLflow
-    if mlflow.active_run():
-        mlflow.log_artifact(temp_path)
-        logger.info(f"Successfully logged {file_name} to MLflow")
-    else:
-        logger.warning(
-            "No active MLflow run found. File saved locally but not logged to MLflow."
-        )
-
-    return temp_path
 
 
 def visualize_microservice_graph(

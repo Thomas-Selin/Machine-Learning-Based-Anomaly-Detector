@@ -13,8 +13,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 # Load environment variables BEFORE importing any modules that use them
 from dotenv import find_dotenv, load_dotenv
-from flask import Flask, Response, jsonify
-from flask_swagger_ui import get_swaggerui_blueprint
+from flask import Flask, jsonify
 from waitress import serve
 
 load_dotenv(find_dotenv())
@@ -48,15 +47,13 @@ from ml_monitoring_service.data_handling import (
     get_timestamp_of_latest_data,
 )
 from ml_monitoring_service.model_building import create_and_train_model
-from ml_monitoring_service.utils import (
-    ConditionalFormatter,
-    HealthCheckFilter,
-    get_memory_usage,
-)
+from ml_monitoring_service.utils import ColoredFormatter, get_gpu_memory_usage
 from ml_monitoring_service.visualisation import visualize_microservice_graph
 
 handler = logging.StreamHandler()
-handler.setFormatter(ConditionalFormatter(datefmt="%H:%M"))
+handler.setFormatter(
+    ColoredFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s", datefmt="%H:%M")
+)
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), handlers=[handler])
 logger = logging.getLogger(__name__)
 
@@ -157,7 +154,9 @@ def load_model(
     if not os.path.exists(model_filename):
         raise FileNotFoundError(f"Model file not found: {model_filename}")
 
-    logger.info(f"Memory usage before loading model: {get_memory_usage()}")
+    gpu_mem = get_gpu_memory_usage()
+    if gpu_mem:
+        logger.info(f"GPU memory before loading: {gpu_mem}")
 
     # Security: Use weights_only=True to prevent arbitrary code execution.
     # This is safe because we only need the model state dict and metadata (not custom objects).
@@ -202,9 +201,9 @@ def load_model(
 
         detector.model.to(detector.device)
 
-        logger.info(
-            f"Memory usage after loading model '{model_filename}': {get_memory_usage()}"
-        )
+        gpu_mem = get_gpu_memory_usage()
+        if gpu_mem:
+            logger.info(f"GPU memory after loading '{model_filename}': {gpu_mem}")
         return detector
     except KeyError as e:
         logger.error(f"Checkpoint missing required key: {e}", exc_info=True)
@@ -424,44 +423,18 @@ def create_app() -> Flask:
         Configured Flask app instance
     """
     app = Flask(__name__)
-    health_check_filter = HealthCheckFilter()
 
-    # Add filter to the root logger
-    for handler in logging.getLogger().handlers:
-        handler.addFilter(health_check_filter)
+    # Disable logging for health check endpoint to reduce noise
+    import logging as log
 
-    app.logger.addFilter(health_check_filter)
+    log.getLogger("waitress").setLevel(log.WARNING)
 
-    # Swagger UI configuration
-    SWAGGER_URL = "/ml-based-anomaly-detector/api/docs"
-    API_URL = "/ml-based-anomaly-detector/api/openapi.json"
-
-    swaggerui_blueprint = get_swaggerui_blueprint(
-        SWAGGER_URL,
-        API_URL,
-        config={"app_name": "ML Based Anomaly Detector API"},
-    )
-    app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
-
-    @app.route("/ml-based-anomaly-detector/api/openapi.json", methods=["GET"])
-    def openapi_spec() -> Response:
-        """Serve OpenAPI specification.
-
-        Returns:
-            Response with OpenAPI JSON specification
-        """
-        from importlib.resources import files
-
-        spec_resource = files("ml_monitoring_service").joinpath("openapi.json")
-        spec_content = spec_resource.read_text()
-        return Response(spec_content, mimetype="application/json")
-
-    @app.route("/ml-based-anomaly-detector/admin/healthcheck", methods=["GET"])
-    def health() -> Response:
+    @app.route("/health", methods=["GET"])
+    def health():
         """Health check endpoint for monitoring"""
         return jsonify(status="up")
 
-    @app.route("/ml-based-anomaly-detector/version", methods=["GET"])
+    @app.route("/version", methods=["GET"])
     def version() -> str:
         """Get Python version information"""
         return "Python Version: " + sys.version
@@ -508,27 +481,14 @@ if __name__ == "__main__":
     for active_set in active_sets:
         # Retrieve the entire configuration object for a specific service set
         service_set_config = conf.get_config(active_set)
-
-        training_lookback_hours = conf.get_training_lookback_hours(active_set)
         inference_lookback_minutes = conf.get_inference_lookback_minutes(active_set)
 
-        # Access attributes of the configuration object
-        logger.info(f"---------------Config for {active_set} service set:")
-        logger.info(f"Relationships: {service_set_config.relationships}")
-        logger.info(f"Metrics: {service_set_config.metrics}")
+        # Access configuration
         logger.info(
-            f"Training Lookback Hours: {service_set_config.training_lookback_hours}"
+            f"Config for '{active_set}': services={len(service_set_config.services)}, "
+            f"window_size={service_set_config.window_size}, "
+            f"threshold={service_set_config.anomaly_threshold_percentile}%"
         )
-        logger.info(
-            f"Inference Lookback Minutes: {service_set_config.inference_lookback_minutes}"
-        )
-        logger.info(f"Window Size: {service_set_config.window_size}")
-        logger.info(
-            f"Anomaly Threshold Percentile: {service_set_config.anomaly_threshold_percentile}"
-        )
-        logger.info(f"Training Lookback Hours: {training_lookback_hours}")
-        logger.info(f"Inference Lookback Minutes: {inference_lookback_minutes}")
-        logger.info(f"---------------End of config for {active_set} service set.")
 
         # Schedule the model creation task (every 45 minutes)
         scheduler.add_job(
