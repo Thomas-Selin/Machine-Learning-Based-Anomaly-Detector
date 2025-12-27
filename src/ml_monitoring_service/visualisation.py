@@ -1,6 +1,7 @@
 import logging
 
 import matplotlib
+import matplotlib.cm
 import matplotlib.pyplot
 import networkx as nx
 
@@ -45,10 +46,9 @@ def visualize_microservice_graph(
     if service_errors and any(service_errors.values()):
         max_error = max(service_errors.values())
         min_error = min(service_errors.values())
+        orrd_cmap = matplotlib.cm.get_cmap("OrRd")
         node_colors = [
-            matplotlib.pyplot.cm.OrRd(
-                (service_errors[service] - min_error) / (max_error - min_error)
-            )
+            orrd_cmap((service_errors[service] - min_error) / (max_error - min_error))
             if service in service_errors
             else "#4FB6D6"
             for service in G.nodes
@@ -73,7 +73,6 @@ def visualize_microservice_graph(
         font_size=11,
         font_color="black",
         font_weight="bold",
-        arrows=True,
         edge_color="#FFFFFF",
         arrowsize=30,
         # width=2,
