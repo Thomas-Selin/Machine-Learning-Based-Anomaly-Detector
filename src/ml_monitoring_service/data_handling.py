@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -204,7 +205,11 @@ def normalize_feature(df: pd.DataFrame, feature_name: str) -> pd.DataFrame:
 
 
 def convert_to_model_input(
-    active_set: str, df: pd.DataFrame
+    active_set: str,
+    df: pd.DataFrame,
+    *,
+    approach: Literal["grid", "event"] = "grid",
+    time_grid_freq: str | None = None,
 ) -> tuple[np.ndarray, list[str], list[str]]:
     """Convert DataFrame to model input format
 
@@ -218,41 +223,130 @@ def convert_to_model_input(
     Raises:
         DataValidationError: If data validation fails
     """
+    original_df = df
+
     # Validate combined dataset
     services = conf.config.get_services(active_set)
-    validate_combined_dataset(df, services)
 
     # Ensure timestamp is in datetime format
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    original_df["timestamp"] = pd.to_datetime(
+        original_df["timestamp"], format="mixed", errors="coerce"
+    )
+    if original_df["timestamp"].isna().any():
+        raise DataValidationError("Some rows have invalid timestamps")
+
+    # Ensure timestamp_nanoseconds exists (some test/fixtures may omit it)
+    if "timestamp_nanoseconds" not in original_df.columns:
+        original_df["timestamp_nanoseconds"] = original_df["timestamp"].astype("int64")
+
+    validate_combined_dataset(original_df, services)
 
     # Time features are handled separately in the Dataset class
     # Only include the actual metrics and severity level
     features = conf.config.get_config(active_set).metrics + ["severity_level"]
 
-    # Normalize features
+    # ---------------------------------------------------------------------
+    # Align per-service timestamps so the model sees a dense tensor:
+    #   [time, service, feature]
+    #
+    # - approach="grid": floor timestamps to a fixed grid and create a complete
+    #   date_range from min..max at `TIME_GRID_FREQ`.
+    # - approach="event": keep original (irregular) timestamps but ensure the
+    #   full (timestamp, service) product exists at observed timestamps.
+    #
+    # Both approaches aggregate duplicates per (timestamp, service), forward-fill
+    # within each service, normalize features, then fill remaining NaNs with 0.
+    # ---------------------------------------------------------------------
+    from ml_monitoring_service.constants import TIME_GRID_FREQ
+
+    if approach not in ("grid", "event"):
+        raise ValueError(
+            f"Unsupported approach: {approach}. Expected 'grid' or 'event'."
+        )
+
+    effective_freq = time_grid_freq or TIME_GRID_FREQ
+
+    working_df = original_df
+    if approach == "grid":
+        working_df["timestamp"] = working_df["timestamp"].dt.floor(effective_freq)
+
+    # Keep only relevant columns for aggregation/alignment.
+    keep_cols = ["timestamp", "service"] + features
+    keep_cols = [c for c in keep_cols if c in working_df.columns]
+    working_df = working_df[keep_cols].copy()
+
+    agg: dict[str, str] = {f: "mean" for f in features if f != "severity_level"}
+    if "severity_level" in features:
+        # Severity is categorical/ordinal; keep the most severe event in the bucket.
+        agg["severity_level"] = "max"
+
+    # Collapse duplicates within the same timestamp bucket.
+    aligned_df = working_df.groupby(["timestamp", "service"], as_index=False).agg(agg)
+    if aligned_df.empty:
+        raise DataValidationError("No valid rows after preprocessing")
+
+    if approach == "grid":
+        # Build a complete time grid from min..max and align all services.
+        start = aligned_df["timestamp"].min()
+        end = aligned_df["timestamp"].max()
+        if pd.isna(start) or pd.isna(end):
+            raise DataValidationError("No valid timestamps after preprocessing")
+
+        all_timestamps = pd.date_range(start=start, end=end, freq=effective_freq)
+    else:
+        # Keep observed timestamps only (irregular axis).
+        all_timestamps = pd.DatetimeIndex(
+            pd.to_datetime(aligned_df["timestamp"]).unique()
+        ).sort_values()
+
+    full_index = pd.MultiIndex.from_product(
+        [all_timestamps, services], names=["timestamp", "service"]
+    )
+
+    aligned_df = aligned_df.set_index(["timestamp", "service"]).reindex(full_index)
+
+    # Forward-fill within each service to reduce artificial zeros from missing rows.
+    # Any leading gaps will remain NaN and be set to 0 after normalization.
+    aligned_df = aligned_df.groupby(level=1).ffill()
+    aligned_df = aligned_df.reset_index()
+    aligned_df["timestamp_nanoseconds"] = aligned_df["timestamp"].astype("int64")
+
+    # Normalize features (after resampling; NaNs are preserved through normalization)
     for feature in features:
-        df = normalize_feature(df, feature)
+        aligned_df = normalize_feature(aligned_df, feature)
 
-    # Normalize timestamp key column to int64 nanoseconds for stable equality checks.
-    timestamp_ns = ensure_timestamp_nanoseconds_ns(df)
+    # Fill remaining missing values with 0 after normalization.
+    aligned_df = aligned_df.fillna(0)
+
+    # Deterministic ordering for reshape.
+    aligned_df["service"] = pd.Categorical(
+        aligned_df["service"], categories=services, ordered=True
+    )
+    aligned_df = aligned_df.sort_values(
+        ["timestamp_nanoseconds", "service"], kind="stable"
+    )
+
+    timestamp_ns = np.sort(aligned_df["timestamp_nanoseconds"].unique())
     timestamps = timestamp_ns
-    service_to_idx = {service: idx for idx, service in enumerate(services)}
-    data = np.zeros((len(timestamps), len(services), len(features)))
+    expected_rows = len(timestamps) * len(services)
+    if len(aligned_df) != expected_rows:
+        raise DataValidationError(
+            f"Aligned dataset shape mismatch: rows={len(aligned_df)} expected_rows={expected_rows}. "
+            "This indicates inconsistent timestamp/service alignment."
+        )
 
-    for t, timestamp in enumerate(timestamps):
-        for service in services:
-            service_data = df[
-                (df["timestamp_nanoseconds"] == timestamp) & (df["service"] == service)
-            ]
-            if not service_data.empty:
-                feature_values = service_data[features].values
-                if feature_values.shape[0] > 1:
-                    # Average multiple entries for the same service at the same timestamp
-                    feature_values = feature_values.mean(axis=0)
-                else:
-                    # Flatten to 1D array if only one row
-                    feature_values = feature_values.flatten()
-                data[t, service_to_idx[service]] = feature_values
+    data = (
+        aligned_df[features]
+        .to_numpy()
+        .reshape(len(timestamps), len(services), len(features))
+    )
+
+    # Mutate the input DataFrame in-place to reflect the aligned time grid.
+    # Downstream code relies on get_ordered_timepoints(df) matching the returned data.
+    original_df.drop(index=original_df.index, inplace=True)
+    original_df.drop(columns=list(original_df.columns), inplace=True, errors="ignore")
+    for col in aligned_df.columns:
+        original_df[col] = aligned_df[col].to_numpy()
 
     # Validate model input
     expected_shape = (len(timestamps), len(services), len(features))

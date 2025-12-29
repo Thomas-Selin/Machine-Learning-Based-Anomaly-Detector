@@ -43,6 +43,16 @@ MAX_EPOCHS = int(os.getenv("MAX_EPOCHS", "100"))
 # If not set, all available service sets from service_sets.yaml will be activated
 ACTIVE_SERVICE_SETS = os.getenv("ACTIVE_SERVICE_SETS")
 
+# Time axis alignment
+# Raw observability events can be irregular; we align to a fixed grid before windowing.
+# Examples: "30s", "1min", "5min" (pandas frequency strings).
+TIME_GRID_FREQ = os.getenv("TIME_GRID_FREQ", "1min")
+
+# Preprocessing approach for constructing the model's time axis.
+# - "grid": align timestamps onto a fixed grid (recommended default)
+# - "event": keep observed (irregular) timestamps but densify across services
+DATA_APPROACH = os.getenv("DATA_APPROACH", "grid").lower()
+
 
 # ============================================================================
 # ANSI Color Codes

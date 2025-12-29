@@ -114,7 +114,9 @@ def test_detect(model_input, config):
         percentile=config.anomaly_threshold_percentile,
     )
 
-    result = detector.detect(data[: config.window_size], "2022-01-01 00:00:00")
+    result = detector.detect(
+        data[: config.window_size], timepoints[: config.window_size]
+    )
 
     assert "is_anomaly" in result
     assert "error_score" in result
@@ -152,7 +154,9 @@ def test_analyze_anomalies(model_input, config):
         percentile=config.anomaly_threshold_percentile,
     )
 
-    result = detector.detect(data[: config.window_size], "2022-01-01 00:00:00")
+    result = detector.detect(
+        data[: config.window_size], timepoints[: config.window_size]
+    )
     explanations = analyse_anomalies(result, config.relationships, services, features)
 
     assert len(explanations) > 0

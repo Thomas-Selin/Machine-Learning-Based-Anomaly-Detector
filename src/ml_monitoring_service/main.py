@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 import platform
@@ -5,6 +6,7 @@ import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import mlflow
 import pandas as pd
@@ -23,6 +25,7 @@ import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.anomaly_analyser import analyse_anomalies
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
 from ml_monitoring_service.constants import (
+    DATA_APPROACH,
     DEFAULT_TRAINING_INTERVAL_MINUTES,
     DOWNLOAD_ENABLED,
     INFERENCE_DELAY_OFFSET_MINUTES,
@@ -279,7 +282,11 @@ def inference(active_set: str, model_filename: str) -> None:
         # Check for NaN values in data
         df = check_for_nan(df)
 
-        data, services, features = convert_to_model_input(active_set, df)
+        data, services, features = convert_to_model_input(
+            active_set,
+            df,
+            approach=DATA_APPROACH if DATA_APPROACH in ("grid", "event") else "grid",
+        )
         timepoints = get_ordered_timepoints(df)
 
         logger.info("\nDataset details:")
@@ -345,8 +352,9 @@ def inference(active_set: str, model_filename: str) -> None:
 
         for i in range(0, len(data) - detector.window_size, detector.window_size):
             inference_window = data[i : i + detector.window_size]
-            timestamp = timestamps[i]
-            result = detector.detect(inference_window, timestamp)
+            window_timepoints = timestamps[i : i + detector.window_size]
+            timestamp = window_timepoints[0]
+            result = detector.detect(inference_window, window_timepoints)
             num_windows_processed += 1
 
             # Log each window's result for debugging
@@ -415,6 +423,172 @@ def inference(active_set: str, model_filename: str) -> None:
             mlflow.log_artifact(result_graph_path)
 
 
+def _parse_inference_variant(
+    variant: str,
+) -> tuple[Literal["grid", "event"], str | None]:
+    raw = variant.strip()
+    if not raw:
+        raise ValueError("Empty variant")
+    if ":" in raw:
+        approach, freq = raw.split(":", 1)
+        approach = approach.strip().lower()
+        freq = freq.strip()
+    else:
+        approach, freq = raw.lower(), None
+    if approach not in ("grid", "event"):
+        raise ValueError(
+            f"Invalid variant '{variant}'. Use 'event' or 'grid[:<freq>]'."
+        )
+    if approach == "event":
+        freq = None
+    return approach, freq
+
+
+def inference_variant(
+    active_set: str,
+    model_filename: str,
+    *,
+    variant: str,
+) -> None:
+    """Run inference once for one preprocessing variant and write separate outputs."""
+    approach, freq = _parse_inference_variant(variant)
+    tag = variant.replace(":", "_").replace("/", "_")
+
+    config = conf.config.get_config(active_set)
+    age_latest_data = get_timestamp_of_latest_data(active_set)
+
+    # Ensure model is available locally.
+    if not os.path.exists(model_filename):
+        _try_restore_model_from_mlflow(active_set, model_filename)
+    if not os.path.exists(model_filename):
+        logger.warning(
+            f"No trained model found at {model_filename}. Skipping inference for {variant}."
+        )
+        return
+
+    with mlflow.start_run(
+        run_name=f"Model inference ({variant}): {active_set}-microservice-set"
+    ):
+        mlflow.log_param("active_set", active_set)
+        mlflow.log_param("inference_variant", variant)
+        mlflow.log_param("data_approach", approach)
+        if freq is not None:
+            mlflow.log_param("time_grid_freq", freq)
+
+        try:
+            if DOWNLOAD_ENABLED:
+                safe_download_splunk_data("inference", active_set, age_latest_data)
+                safe_download_prometheus_data("inference", active_set)
+                safe_combine_services("inference", active_set, age_latest_data)
+        except Exception as e:
+            logger.warning(
+                f"Download/combine failed for {variant}: {e}. Continuing with existing data."
+            )
+
+        inference_dataset_path = f"output/{active_set}/inference_dataset.json"
+        df = get_microservice_data_from_file(inference_dataset_path)
+        df = check_for_nan(df)
+
+        data, services, features = convert_to_model_input(
+            active_set,
+            df,
+            approach=approach,
+            time_grid_freq=freq,
+        )
+        timepoints = get_ordered_timepoints(df)
+
+        override_threshold = None
+        detector = load_model(
+            model_filename,
+            num_features=len(features),
+            num_services=len(services),
+            config=config,
+            override_threshold=override_threshold,
+        )
+
+        if RECALCULATE_THRESHOLD_ON_INFERENCE:
+            detector.set_threshold(
+                data,
+                timepoints=pd.Series(timepoints),
+                percentile=int(config.anomaly_threshold_percentile),
+            )
+
+        service_errors = {service: 0 for service in services}
+        timestamps = timepoints
+        num_anomalies = 0
+        num_windows_processed = 0
+
+        total_possible_windows = len(data) - detector.window_size
+        if total_possible_windows <= 0:
+            logger.warning(
+                f"Not enough data for inference ({variant}). Data length: {len(data)}, Window size: {detector.window_size}"
+            )
+            return
+
+        for i in range(0, len(data) - detector.window_size, detector.window_size):
+            inference_window = data[i : i + detector.window_size]
+            window_timepoints = timestamps[i : i + detector.window_size]
+            result = detector.detect(inference_window, window_timepoints)
+            num_windows_processed += 1
+
+            if result["is_anomaly"]:
+                num_anomalies += 1
+
+            for service, error in zip(services, result["service_errors"], strict=False):
+                service_errors[service] += error
+
+        mlflow.log_metric("num_windows_processed", num_windows_processed)
+        mlflow.log_metric("num_anomalies_detected", num_anomalies)
+        mlflow.log_metric("anomaly_rate", num_anomalies / max(1, num_windows_processed))
+
+        out_dir = Path(f"output/{active_set}")
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Variant-specific graph output.
+        result_graph_path = str(out_dir / f"microservice_graph_with_results_{tag}.png")
+        visualize_microservice_graph(
+            config.relationships,
+            result_graph_path,
+            {k: float(v) for k, v in service_errors.items()},
+        )
+        if os.path.exists(result_graph_path):
+            mlflow.log_artifact(result_graph_path)
+
+        # Variant-specific summary JSON.
+        summary_path = out_dir / f"inference_summary_{tag}.json"
+        summary_path.write_text(
+            pd.Series(
+                {
+                    "active_set": active_set,
+                    "variant": variant,
+                    "approach": approach,
+                    "time_grid_freq": freq,
+                    "num_services": len(services),
+                    "num_features": len(features),
+                    "num_timepoints": int(len(data)),
+                    "window_size": int(detector.window_size),
+                    "num_windows_processed": int(num_windows_processed),
+                    "num_anomalies_detected": int(num_anomalies),
+                    "threshold": float(detector.threshold)
+                    if detector.threshold is not None
+                    else None,
+                }
+            ).to_json(indent=2)
+        )
+        mlflow.log_artifact(str(summary_path))
+
+
+def inference_variants_once(
+    *,
+    active_set: str,
+    model_filename: str,
+    variants: list[str],
+) -> None:
+    for v in variants:
+        logger.info(Colors.blue(f"Running inference variant: {v}"))
+        inference_variant(active_set, model_filename, variant=v)
+
+
 def create_app() -> Flask:
     """Create and configure Flask application
 
@@ -442,8 +616,46 @@ def create_app() -> Flask:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument(
+        "--run-once-inference",
+        action="store_true",
+        help="Run inference once and exit (no scheduler/server).",
+    )
+    parser.add_argument(
+        "--active-set",
+        default=None,
+        help="Service set to run once (e.g. 'transfer').",
+    )
+    parser.add_argument(
+        "--model-file",
+        default=None,
+        help="Path to model file (defaults to output/<active_set>/best_model_<active_set>.pth).",
+    )
+    parser.add_argument(
+        "--inference-variants",
+        default=None,
+        help="Comma-separated variants, e.g. 'event,grid:1min' or 'event,grid:1s'.",
+    )
+    args, _unknown = parser.parse_known_args()
+
     conf.config.set_active(conf.config.get_available_sets())
     active_sets = conf.config.get_active()
+
+    if args.run_once_inference:
+        active_set = args.active_set or (active_sets[0] if active_sets else None)
+        if not active_set:
+            raise SystemExit("No active service sets available")
+
+        model_filename = (
+            args.model_file or f"output/{active_set}/best_model_{active_set}.pth"
+        )
+        variants_raw = args.inference_variants or "event,grid:1min"
+        variants = [v.strip() for v in variants_raw.split(",") if v.strip()]
+        inference_variants_once(
+            active_set=active_set, model_filename=model_filename, variants=variants
+        )
+        raise SystemExit(0)
 
     flask_app = create_app()
 

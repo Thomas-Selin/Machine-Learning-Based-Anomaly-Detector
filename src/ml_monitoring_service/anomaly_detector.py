@@ -311,6 +311,13 @@ class AnomalyDetector:
         """
         self.model.eval()
 
+        if len(validation_data) <= self.window_size:
+            logger.warning(
+                "Validation dataset is too small for windowing "
+                f"(len={len(validation_data)} <= window_size={self.window_size}). "
+                "Computing threshold from a single padded window."
+            )
+
         if timepoints is not None:
             val_timestamps = pd.to_datetime(timepoints).to_numpy()
         elif df is not None:
@@ -330,6 +337,35 @@ class AnomalyDetector:
                 freq="1min",
             ).values
 
+        # If we can't create at least one window, pad up to window_size.
+        if len(validation_data) <= self.window_size:
+            pad_len = self.window_size - len(validation_data)
+            if pad_len > 0:
+                validation_data = np.pad(
+                    validation_data,
+                    pad_width=((0, pad_len), (0, 0), (0, 0)),
+                    mode="edge",
+                )
+                if len(val_timestamps) > 0:
+                    val_timestamps = np.concatenate(
+                        [val_timestamps, np.repeat(val_timestamps[-1], pad_len)]
+                    )
+            # Use a batch of one window and compute errors directly.
+            with torch.no_grad():
+                x = torch.FloatTensor(validation_data[: self.window_size]).unsqueeze(0)
+                x = x.to(self.device)
+                ts = torch.FloatTensor(
+                    ServiceMetricsDataset(
+                        validation_data,
+                        pd.Series(val_timestamps),
+                        self.window_size,
+                    )[0][2]
+                ).unsqueeze(0)
+                out = self.model(x, ts)
+                error = torch.mean((x - out) ** 2, dim=(2, 3))
+                self.threshold = float(np.percentile(error.cpu().numpy(), percentile))
+            return
+
         dataset = ServiceMetricsDataset(
             validation_data, pd.Series(val_timestamps), self.window_size
         )
@@ -347,12 +383,14 @@ class AnomalyDetector:
             np.percentile(np.array(reconstruction_errors), percentile)
         )
 
-    def detect(self, metrics_window: np.ndarray, timestamp: str) -> dict[str, Any]:
+    def detect(
+        self, metrics_window: np.ndarray, window_timepoints: list[Any] | np.ndarray
+    ) -> dict[str, Any]:
         """Detect anomalies in current metrics window.
 
         Args:
             metrics_window: Window of metrics to analyze
-            timestamp: Timestamp for the window
+            window_timepoints: Sequence of timestamps for the window (length=window_size)
 
         Returns:
             Dictionary with detection results
@@ -361,12 +399,11 @@ class AnomalyDetector:
         with torch.no_grad():
             x = torch.FloatTensor(metrics_window).unsqueeze(0).to(self.device)
 
-            # Generate time features from the window timestamps
-            # First, create a sequence of timestamps by adding time offsets to the base timestamp
-            timestamps = [
-                pd.to_datetime(timestamp) + pd.Timedelta(minutes=i)
-                for i in range(self.window_size)
-            ]
+            timestamps = pd.to_datetime(window_timepoints).to_list()
+            if len(timestamps) != self.window_size:
+                raise ValueError(
+                    f"window_timepoints must have length window_size={self.window_size}, got {len(timestamps)}"
+                )
 
             # Extract time features (hours, minutes, day_of_the_week, seconds)
             hours = (
@@ -415,5 +452,5 @@ class AnomalyDetector:
                 "threshold": float(self.threshold),
                 "service_errors": service_errors,
                 "variable_errors": variable_errors,
-                "timestamp": timestamp,
+                "timestamp": str(pd.to_datetime(timestamps[0])),
             }

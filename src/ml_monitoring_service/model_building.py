@@ -6,7 +6,12 @@ import mlflow
 
 import ml_monitoring_service.configuration as conf
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
-from ml_monitoring_service.constants import DOWNLOAD_ENABLED, MAX_EPOCHS, Colors
+from ml_monitoring_service.constants import (
+    DATA_APPROACH,
+    DOWNLOAD_ENABLED,
+    MAX_EPOCHS,
+    Colors,
+)
 from ml_monitoring_service.data_gathering.combine import combine_services
 from ml_monitoring_service.data_gathering.get_prometheus_data import (
     main as download_prometheus_data,
@@ -69,7 +74,11 @@ def create_and_train_model(active_set: str) -> AnomalyDetector | None:
         # Check for NaN values in data
         df = check_for_nan(df)
 
-        data, services, features = convert_to_model_input(active_set, df)
+        data, services, features = convert_to_model_input(
+            active_set,
+            df,
+            approach=DATA_APPROACH if DATA_APPROACH in ("grid", "event") else "grid",
+        )
         timepoints = get_ordered_timepoints(df)
 
         logger.info("\nDataset details:")
