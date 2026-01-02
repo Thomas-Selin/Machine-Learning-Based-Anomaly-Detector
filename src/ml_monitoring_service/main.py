@@ -610,7 +610,7 @@ def create_app() -> Flask:
     @app.route("/version", methods=["GET"])
     def version() -> str:
         """Get Python version information"""
-        return "Python Version: " + sys.version
+        return f"Python Version: {sys.version}"
 
     return app
 

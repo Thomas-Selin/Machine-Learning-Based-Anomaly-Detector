@@ -79,7 +79,7 @@ def test_download_prometheus_data(monkeypatch, config):
     service_name = "test-service"
     service_name_underscore = service_name.replace(
         "-", "_"
-    )  # TODO standardize the name case style
+    )  # Note: service name casing follows Prometheus convention (lowercase with underscores)
     active_set = "test-microservice-set"
     service_dir = Path(
         f"output/{active_set}/prometheus_data_training/{service_name_underscore}"

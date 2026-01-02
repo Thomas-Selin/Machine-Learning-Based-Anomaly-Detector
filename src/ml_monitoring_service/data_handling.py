@@ -13,9 +13,12 @@ logger = logging.getLogger(__name__)
 
 
 class DataValidationError(Exception):
-    """Raised when data validation fails."""
+    """Raised when data validation fails.
 
-    pass
+    This exception is raised when input data doesn't meet the requirements
+    for model training or inference, such as missing columns, incorrect shapes,
+    or invalid values (NaN, Inf).
+    """
 
 
 def validate_combined_dataset(df: pd.DataFrame, expected_services: list[str]) -> None:

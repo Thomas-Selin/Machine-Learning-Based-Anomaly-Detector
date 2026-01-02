@@ -20,7 +20,7 @@ class ServiceSetConfig:
     def services(self) -> list[str]:
         """Get all unique services from relationships"""
         services = set()
-        services.update(self.relationships.keys())
+        services.update(self.relationships)
         for targets in self.relationships.values():
             services.update(targets)
         return sorted(list(services))
@@ -115,7 +115,7 @@ class ConfigLoader:
             self.active_sets = requested_sets
         else:
             # Default to all available service sets
-            self.active_sets = list(self.service_sets.keys())
+            self.active_sets = list(self.service_sets)
 
     def _load_config(self) -> None:
         """Load and parse the configuration file
@@ -227,7 +227,7 @@ class ConfigLoader:
             # Return services only for the specified service_set
             config = self.get_config(service_set)
             services = set()
-            services.update(config.relationships.keys())
+            services.update(config.relationships)
             for targets in config.relationships.values():
                 services.update(targets)
             return sorted(list(services))  # Sort for consistent ordering
@@ -247,7 +247,7 @@ class ConfigLoader:
         Returns:
             Sorted list of all configured service set names
         """
-        return sorted(list(self.service_sets.keys()))
+        return sorted(list(self.service_sets))
 
 
 # Global configuration instance

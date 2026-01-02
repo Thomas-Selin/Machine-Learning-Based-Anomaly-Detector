@@ -105,7 +105,7 @@ def test_check_authentication_fail():
         mock_get.return_value.status_code = 401
         mock_get.return_value.text = "Unauthorized"
         result = check_authentication()
-        assert result is False
+        assert not result
 
 
 def test_parse_raw_data():

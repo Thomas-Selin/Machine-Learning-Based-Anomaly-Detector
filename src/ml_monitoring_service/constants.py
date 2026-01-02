@@ -124,13 +124,6 @@ RECALCULATE_THRESHOLD_ON_INFERENCE = (
 )
 
 # ============================================================================
-# Training config
-# ============================================================================
-
-# Max number of epochs the training goes on for. Might stop earlier because of early-stopping mechanism
-MAX_EPOCHS = int(os.getenv("MAX_EPOCHS", 20))
-
-# ============================================================================
 # Scheduler config
 # ============================================================================
 

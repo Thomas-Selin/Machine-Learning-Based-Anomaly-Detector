@@ -35,7 +35,7 @@ class AnomalyDetector:
         num_services: int,
         num_features: int,
         window_size: int,
-        config: Any = None,
+        config: conf.ServiceSetConfig | None = None,
     ) -> None:
         """Initialize anomaly detector.
 
@@ -62,10 +62,10 @@ class AnomalyDetector:
         self,
         train_data: np.ndarray,
         val_data: np.ndarray,
-        df: Any,
+        df: pd.DataFrame,
         active_set: str,
         max_epochs: int,
-        timepoints: list[Any] | np.ndarray,
+        timepoints: list[pd.Timestamp] | np.ndarray,
         batch_size: int = 32,
         patience: int = 15,
         *,
@@ -370,8 +370,8 @@ class AnomalyDetector:
     def set_threshold(
         self,
         validation_data: np.ndarray,
-        df: Any = None,
-        timepoints: list[Any] | pd.Series | np.ndarray | None = None,
+        df: pd.DataFrame | None = None,
+        timepoints: list[pd.Timestamp] | pd.Series | np.ndarray | None = None,
         percentile: int = 99,
     ) -> None:
         """Set anomaly threshold based on validation data.
@@ -457,7 +457,9 @@ class AnomalyDetector:
         )
 
     def detect(
-        self, metrics_window: np.ndarray, window_timepoints: list[Any] | np.ndarray
+        self,
+        metrics_window: np.ndarray,
+        window_timepoints: list[pd.Timestamp] | np.ndarray,
     ) -> dict[str, Any]:
         """Detect anomalies in current metrics window.
 
