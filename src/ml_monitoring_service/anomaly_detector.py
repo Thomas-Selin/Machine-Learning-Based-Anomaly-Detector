@@ -68,6 +68,8 @@ class AnomalyDetector:
         timepoints: list[Any] | np.ndarray,
         batch_size: int = 32,
         patience: int = 15,
+        *,
+        save_checkpoint: bool = True,
     ) -> None:
         """Train the anomaly detection model.
 
@@ -99,16 +101,14 @@ class AnomalyDetector:
             f"Training with {len(train_data)} training samples and {len(val_data)} validation samples"
         )
 
-        # Import here to avoid circular dependency
+        # MLflow logging (always enabled). Reuse an existing run if present.
         import tempfile
 
         import mlflow
         import mlflow.pytorch
 
-        # Enable MLflow autologging for PyTorch
         mlflow.pytorch.autolog(log_models=False, log_every_n_epoch=1)  # type: ignore[attr-defined]
 
-        # Reuse an existing MLflow run if one is already active (e.g. started in model_building).
         run_ctx = nullcontext()
         if mlflow.active_run() is None:
             run_ctx = mlflow.start_run(
@@ -141,9 +141,81 @@ class AnomalyDetector:
                     mlflow.log_artifact(str(val_data_path), artifact_path="data")
                     mlflow.log_artifact(str(service_names_path), artifact_path="data")
 
-                logger.info(
-                    "Successfully logged training and validation data to MLflow"
+            # Also log a simple, always-viewable architecture snapshot as an image.
+            # MLflow doesn't have a dedicated "model graph" viewer, but it can display image artifacts.
+            try:
+                import matplotlib.pyplot as plt
+
+                model_text = (
+                    "HybridAutoencoderTransformerModel\n"
+                    f"input: (batch, window={self.window_size}, services={self.num_services}, features={self.num_features})\n\n"
+                    + repr(self.model)
                 )
+                # Keep the artifact reasonably sized.
+                model_lines = model_text.splitlines()
+                if len(model_lines) > 400:
+                    model_text = "\n".join(
+                        model_lines[:220]
+                        + ["", "... (truncated) ...", ""]
+                        + model_lines[-120:]
+                    )
+                lines = model_text.count("\n") + 1
+                fig_height = min(30.0, max(6.0, lines * 0.20))
+                fig_width = 14.0
+
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmpdir_p = Path(tmpdir)
+                    txt_path = tmpdir_p / "model_architecture.txt"
+                    png_path = tmpdir_p / "model_architecture.png"
+
+                    txt_path.write_text(model_text)
+
+                    fig = plt.figure(figsize=(fig_width, fig_height))
+                    fig.text(
+                        0.01,
+                        0.99,
+                        model_text,
+                        va="top",
+                        ha="left",
+                        family="monospace",
+                        fontsize=8,
+                    )
+                    plt.axis("off")
+                    fig.savefig(png_path, dpi=150, bbox_inches="tight")
+                    plt.close(fig)
+
+                    mlflow.log_artifact(
+                        str(txt_path), artifact_path="model/architecture"
+                    )
+                    mlflow.log_artifact(
+                        str(png_path), artifact_path="model/architecture"
+                    )
+                    mlflow.set_tag("model.architecture_image", "true")
+            except Exception as e:
+                logger.warning(f"Failed to export model architecture image: {e}")
+
+            # Manual diagram bundle (overview + deep dives) as SVG artifacts.
+            # These are intentionally hand-crafted; update if the architecture changes.
+            try:
+                from ml_monitoring_service.architecture_diagrams import (
+                    write_model_architecture_diagrams,
+                )
+
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    out_dir = Path(tmpdir)
+                    write_model_architecture_diagrams(
+                        model=self.model,
+                        num_services=self.num_services,
+                        num_features=self.num_features,
+                        window_size=self.window_size,
+                        out_dir=out_dir,
+                    )
+                    mlflow.log_artifacts(
+                        str(out_dir), artifact_path="model/architecture/diagrams"
+                    )
+                    mlflow.set_tag("model.architecture_diagrams", "true")
+            except Exception as e:
+                logger.warning(f"Failed to export manual architecture diagrams: {e}")
 
             # Align timestamps to the model time axis (unique ordered timepoints)
             train_size = len(train_data)
@@ -211,7 +283,8 @@ class AnomalyDetector:
 
                 # Log metrics manually in case autolog misses something
                 mlflow.log_metrics(
-                    {"train_loss": avg_train_loss, "val_loss": avg_val_loss}, step=epoch
+                    {"train_loss": avg_train_loss, "val_loss": avg_val_loss},
+                    step=epoch,
                 )
 
                 logger.info(
@@ -243,50 +316,50 @@ class AnomalyDetector:
                 # Set threshold before saving (use aligned timepoints for correct time features)
                 self.set_threshold(val_data, timepoints=val_timestamps)
 
-                # Generate model version (timestamp-based for uniqueness)
-                from datetime import datetime
+                if save_checkpoint:
+                    # Generate model version (timestamp-based for uniqueness)
+                    from datetime import datetime
 
-                model_version = datetime.now().strftime("%Y%m%d_%H%M%S")
-                mlflow.set_tag("model_version", model_version)
-                mlflow.set_tag("service_set", active_set)
+                    model_version = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-                # Save model checkpoint to temp file and log to MLflow
-                with tempfile.NamedTemporaryFile(
-                    mode="wb", suffix=".pth", delete=False
-                ) as tmp:
-                    torch.save(
-                        {
-                            "model_state_dict": best_model_state,
-                            "threshold": self.threshold,
-                            "num_services": self.num_services,
-                            "num_features": self.num_features,
-                            "window_size": self.window_size,
-                            "model_version": model_version,
-                            "training_date": datetime.now().isoformat(),
-                        },
-                        tmp,
+                    mlflow.set_tag("model_version", model_version)
+                    mlflow.set_tag("service_set", active_set)
+
+                    # Save model checkpoint to temp file (optionally log)
+                    import tempfile
+
+                    with tempfile.NamedTemporaryFile(
+                        mode="wb", suffix=".pth", delete=False
+                    ) as tmp:
+                        torch.save(
+                            {
+                                "model_state_dict": best_model_state,
+                                "threshold": self.threshold,
+                                "num_services": self.num_services,
+                                "num_features": self.num_features,
+                                "window_size": self.window_size,
+                                "model_version": model_version,
+                                "training_date": datetime.now().isoformat(),
+                            },
+                            tmp,
+                        )
+                        temp_model_path = tmp.name
+
+                    # Also save to output/ as a local cache for convenience
+                    model_path = f"output/{active_set}/best_model_{active_set}.pth"
+                    Path(model_path).parent.mkdir(parents=True, exist_ok=True)
+                    import shutil
+
+                    shutil.copy(temp_model_path, model_path)
+                    logger.info(
+                        f"Best model saved to {model_path} (local cache) with threshold: {self.threshold:.6f}"
                     )
-                    temp_model_path = tmp.name
 
-                # Also save to output/ as a local cache for convenience
-                model_path = f"output/{active_set}/best_model_{active_set}.pth"
-                Path(model_path).parent.mkdir(parents=True, exist_ok=True)
-                import shutil
+                    # Log model artifact to MLflow with versioning
+                    mlflow.log_artifact(temp_model_path, artifact_path="model")
 
-                shutil.copy(temp_model_path, model_path)
-                logger.info(
-                    f"Best model saved to {model_path} (local cache) with threshold: {self.threshold:.6f}"
-                )
-                logger.info(f"Model version: {model_version}")
-
-                # Log model artifact to MLflow with versioning
-                mlflow.log_artifact(temp_model_path, artifact_path="model")
-                logger.info(
-                    f"Model artifact logged to MLflow with version {model_version}"
-                )
-
-                # Clean up temp file
-                Path(temp_model_path).unlink()
+                    # Clean up temp file
+                    Path(temp_model_path).unlink()
 
             # Log the already-computed threshold
             if self.threshold is not None:

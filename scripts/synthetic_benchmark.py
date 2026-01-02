@@ -2,8 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
+import logging
 import sys
+import tempfile
+import warnings
+from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -14,10 +20,12 @@ _SRC = _REPO_ROOT / "src"
 if _SRC.exists() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+import mlflow
 import numpy as np
 import pandas as pd
 
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
+from ml_monitoring_service.constants import MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_URI
 from ml_monitoring_service.data_handling import (
     convert_to_model_input,
     get_microservice_data_from_file,
@@ -28,6 +36,108 @@ from ml_monitoring_service.evaluation.synthetic import (
     inject_anomalies,
     set_seeds,
 )
+
+# Keep benchmark output compact.
+warnings.filterwarnings("ignore", category=FutureWarning, module=r"mlflow\..*")
+
+
+_LOG = logging.getLogger(__name__)
+
+
+def _git_dir() -> Path | None:
+    """Return the git directory path if this looks like a git worktree."""
+    dot_git = _REPO_ROOT / ".git"
+    if not dot_git.exists():
+        return None
+    if dot_git.is_dir():
+        return dot_git
+    if dot_git.is_file():
+        # Worktree/submodule case: .git is a file containing `gitdir: <path>`.
+        try:
+            txt = dot_git.read_text(encoding="utf-8").strip()
+        except Exception as exc:
+            _LOG.debug("Unable to read .git file: %s", exc)
+            return None
+        prefix = "gitdir:"
+        if not txt.lower().startswith(prefix):
+            return None
+        gitdir = txt[len(prefix) :].strip()
+        gd = Path(gitdir)
+        if not gd.is_absolute():
+            gd = (_REPO_ROOT / gd).resolve()
+        return gd
+    return None
+
+
+def _git_packed_ref(git_dir: Path, ref: str) -> str | None:
+    packed = git_dir / "packed-refs"
+    if not packed.exists():
+        return None
+    try:
+        for line in packed.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("^"):
+                continue
+            sha, name = line.split(" ", 1)
+            if name.strip() == ref:
+                return sha.strip()
+    except Exception as exc:
+        _LOG.debug("Unable to parse packed-refs: %s", exc)
+    return None
+
+
+def _git_metadata() -> tuple[str | None, str | None]:
+    """Return (commit_short, branch) best-effort, without calling git."""
+    gd = _git_dir()
+    if gd is None:
+        return None, None
+
+    head = gd / "HEAD"
+    try:
+        head_txt = head.read_text(encoding="utf-8").strip()
+    except Exception as exc:
+        _LOG.debug("Unable to read git HEAD: %s", exc)
+        return None, None
+
+    if head_txt.startswith("ref:"):
+        ref = head_txt.split(":", 1)[1].strip()
+        branch = ref.split("/")[-1] if ref else None
+        ref_path = gd / ref
+        sha = None
+        if ref_path.exists():
+            try:
+                sha = ref_path.read_text(encoding="utf-8").strip()
+            except Exception as exc:
+                _LOG.debug("Unable to read ref %s: %s", ref, exc)
+        if not sha:
+            sha = _git_packed_ref(gd, ref)
+        commit_short = sha[:7] if sha else None
+        return commit_short, branch
+
+    # Detached HEAD: HEAD contains the commit hash.
+    commit_short = head_txt[:7] if head_txt else None
+    return commit_short, None
+
+
+@contextlib.contextmanager
+def _suppress_project_warnings() -> Iterator[None]:
+    """Temporarily suppress warning-level logs from the project during benchmarks."""
+    target_names = [
+        "ml_monitoring_service",
+        "ml_monitoring_service.data_handling",
+        "mlflow",
+        "mlflow.system_metrics",
+        "mlflow.system_metrics.system_metrics_monitor",
+    ]
+    targets = [logging.getLogger(name) for name in target_names]
+    prev_levels = [t.level for t in targets]
+    try:
+        for t in targets:
+            t.setLevel(logging.ERROR)
+        yield
+    finally:
+        for t, lvl in zip(targets, prev_levels, strict=False):
+            t.setLevel(lvl)
 
 
 def _parse_variant(variant: str) -> tuple[Literal["grid", "event"], str | None]:
@@ -201,6 +311,7 @@ def run_variant(
         max_epochs=max_epochs,
         timepoints=timepoints[:val_end],
         batch_size=batch_size,
+        save_checkpoint=False,
     )
     detector.set_threshold(
         val_data, timepoints=timepoints[train_end:val_end], percentile=95
@@ -292,21 +403,9 @@ def run_variant(
 
 
 def _print_comparison(results: list[dict]) -> None:
-    # Minimal, stable output for quick scanning.
-    rows = []
-    for r in results:
-        rows.append(
-            (
-                r.get("variant"),
-                r.get("num_windows"),
-                r.get("roc_auc"),
-                r.get("best_f1"),
-                r.get("best_f1_precision"),
-                r.get("best_f1_recall"),
-            )
-        )
-
-    print("\n=== Comparison (variant | windows | AUC | bestF1 | P | R | error) ===")
+    print(
+        "\n=== Synthetic benchmark (variant | windows | AUC | bestF1 | P | R | error) ==="
+    )
     for r in results:
         v = str(r.get("variant"))
         err = r.get("error")
@@ -323,6 +422,100 @@ def _print_comparison(results: list[dict]) -> None:
         print(f"{v:10s} | {w:7d} | {auc:0.4f} | {f1:0.4f} | {p:0.4f} | {rec:0.4f} |")
 
 
+def _log_results_to_mlflow(
+    *, results: list[dict], args: argparse.Namespace, out: Path | None
+) -> str:
+    """Log a parent run plus one nested run per variant."""
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+
+    parent_name = f"Synthetic benchmark: {args.active_set}"
+    # MLflow 3.x prints UI links to stdout by default; suppress those here.
+    with contextlib.redirect_stdout(io.StringIO()):
+        with mlflow.start_run(run_name=parent_name) as parent:
+            # Repro tags (best-effort; ignore if git info isn't available).
+            try:
+                git_commit, git_branch = _git_metadata()
+                if git_commit:
+                    mlflow.set_tag("git.commit", git_commit)
+                if git_branch:
+                    mlflow.set_tag("git.branch", git_branch)
+            except Exception as exc:
+                _LOG.debug("Skipping git metadata tags: %s", exc)
+
+            mlflow.log_param("benchmark", "synthetic")
+            mlflow.log_param("dataset", str(args.dataset))
+            mlflow.log_param("active_set", str(args.active_set))
+            mlflow.log_param("variants", str(args.variants))
+            mlflow.log_param("seed", int(args.seed))
+            mlflow.log_param("max_epochs", int(args.max_epochs))
+            mlflow.log_param("window_size", int(args.window_size))
+            mlflow.log_param("batch_size", int(args.batch_size))
+            mlflow.log_param("stride", int(args.stride))
+
+            # Log the combined results JSON once.
+            payload = {"results": results}
+            if out is not None:
+                # If the user asked for an output file, log exactly that.
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text(json.dumps(payload, indent=2))
+                mlflow.log_artifact(str(out))
+            else:
+                # Otherwise, write a temporary artifact.
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    p = Path(tmpdir) / "synthetic_benchmark_results.json"
+                    p.write_text(json.dumps(payload, indent=2))
+                    mlflow.log_artifact(str(p))
+
+            # Nested run per variant with metrics.
+            for r in results:
+                variant = str(r.get("variant"))
+                with mlflow.start_run(run_name=f"variant: {variant}", nested=True):
+                    if "error" in r:
+                        mlflow.set_tag("status", "error")
+                        mlflow.set_tag("error", str(r.get("error")))
+                        continue
+
+                    mlflow.set_tag("status", "ok")
+                    mlflow.log_param("variant", variant)
+                    mlflow.log_param("approach", r.get("approach"))
+                    if r.get("time_grid_freq") is not None:
+                        mlflow.log_param("time_grid_freq", r.get("time_grid_freq"))
+
+                    for key in (
+                        "num_windows",
+                        "roc_auc",
+                        "best_f1",
+                        "best_f1_precision",
+                        "best_f1_recall",
+                        "persisted_threshold",
+                        "persisted_tp",
+                        "persisted_fp",
+                        "persisted_fn",
+                    ):
+                        if key in r and r[key] is not None:
+                            val = r[key]
+                            try:
+                                mlflow.log_metric(key, float(val))
+                            except Exception as exc:
+                                # Keep logging robust; skip non-numeric values.
+                                _LOG.debug(
+                                    "Skipping metric %s=%r for variant %s: %s",
+                                    key,
+                                    val,
+                                    variant,
+                                    exc,
+                                )
+
+                    # Variant JSON as an artifact (handy for debugging).
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        vp = Path(tmpdir) / f"result_{variant.replace(':', '_')}.json"
+                        vp.write_text(json.dumps(r, indent=2))
+                        mlflow.log_artifact(str(vp))
+
+            return parent.info.run_id
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Synthetic anomaly benchmark")
     p.add_argument(
@@ -332,7 +525,7 @@ def main() -> None:
     )
     p.add_argument("--active-set", default="transfer")
     p.add_argument("--seed", type=int, default=1337)
-    p.add_argument("--max-epochs", type=int, default=2)
+    p.add_argument("--max-epochs", type=int, default=10)
     p.add_argument("--window-size", type=int, default=10)
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument(
@@ -359,18 +552,23 @@ def main() -> None:
     results: list[dict] = []
     for variant in variants:
         try:
-            results.append(
-                run_variant(
-                    dataset_path=Path(args.dataset),
-                    active_set=args.active_set,
-                    variant=variant,
-                    seed=args.seed,
-                    max_epochs=args.max_epochs,
-                    window_size=args.window_size,
-                    batch_size=args.batch_size,
-                    stride=args.stride,
+            # Keep terminal output compact by default; suppress internal prints.
+            with (
+                _suppress_project_warnings(),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                results.append(
+                    run_variant(
+                        dataset_path=Path(args.dataset),
+                        active_set=args.active_set,
+                        variant=variant,
+                        seed=args.seed,
+                        max_epochs=args.max_epochs,
+                        window_size=args.window_size,
+                        batch_size=args.batch_size,
+                        stride=args.stride,
+                    )
                 )
-            )
         except Exception as e:
             results.append({"variant": variant, "error": str(e)})
 
@@ -379,7 +577,11 @@ def main() -> None:
         out.write_text(json.dumps({"results": results}, indent=2))
 
     _print_comparison(results)
-    print(json.dumps({"results": results}, indent=2))
+
+    run_id = _log_results_to_mlflow(results=results, args=args, out=out)
+    print(
+        f"Logged to MLflow experiment '{MLFLOW_EXPERIMENT_NAME}' (parent run_id={run_id})."
+    )
 
 
 if __name__ == "__main__":

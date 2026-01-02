@@ -110,9 +110,7 @@ class HybridAutoencoderTransformerModel(nn.Module):
         # Decoder
         self.decoder = nn.Linear(self.hidden_dim, num_features)
 
-    def forward(
-        self, x: torch.Tensor, time_features: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, time_features: torch.Tensor) -> torch.Tensor:
         """Forward pass through the transformer-based autoencoder
 
         Args:
@@ -122,7 +120,6 @@ class HybridAutoencoderTransformerModel(nn.Module):
                           Contains temporal features (hour, minute, day, second)
 
         Returns:
-            Tuple of (reconstructed output, attention_weights)
             Reconstructed output tensor of shape [batch_size, seq_len, num_services, num_features]
             The model attempts to reconstruct the input; reconstruction error indicates anomalies
 
@@ -137,32 +134,21 @@ class HybridAutoencoderTransformerModel(nn.Module):
         # Move time_features to the same device as x
         time_features = time_features.to(x.device)
 
-        # Process each service with its embedding
-        service_outputs = []
-        for service_idx in range(num_services):
-            # Get service data
-            service_data = x[:, :, service_idx, :]  # [batch, seq, features]
+        # Vectorized feature encoding + service embedding addition.
+        # Equivalent to the previous per-service loop, but produces a much cleaner traced graph.
+        #
+        # x:            [B, T, S, F]
+        # time_features:[B, T, 4] -> [B, T, S, 4]
+        # concat:       [B, T, S, F+4]
+        tf = time_features.unsqueeze(2).expand(-1, -1, num_services, -1)
+        service_input = torch.cat([x, tf], dim=3)
 
-            # Concatenate service data with time features
-            service_input = torch.cat(
-                [service_data, time_features], dim=2
-            )  # [batch, seq, features+4]
+        encoded = self.feature_encoder(
+            service_input.reshape(-1, num_features + 4)
+        ).reshape(batch_size, seq_len, num_services, self.hidden_dim)
+        encoded = encoded + self.service_embeddings.unsqueeze(0).unsqueeze(0)
 
-            # Encode features
-            encoded = self.feature_encoder(service_input)  # [batch, seq, hidden]
-
-            # Add service embedding
-            # This adds the learned service-specific representation to the encoded features
-            # The service embedding is the same for all time steps of the same service
-            # This helps the model distinguish between different services and learn their unique patterns
-            service_emb = self.service_embeddings[service_idx].unsqueeze(0).unsqueeze(0)
-            service_emb = service_emb.expand(batch_size, seq_len, -1)
-            encoded = encoded + service_emb
-
-            service_outputs.append(encoded)
-
-        # Stack all service representations
-        stacked = torch.stack(service_outputs, dim=2)  # [batch, seq, services, hidden]
+        stacked = encoded  # [batch, seq, services, hidden]
 
         # Vectorized cross-service attention across all timesteps
         # Reshape to apply attention across services for all timesteps at once

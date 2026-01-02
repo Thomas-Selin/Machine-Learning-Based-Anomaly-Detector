@@ -24,8 +24,9 @@ apscheduler = "3.11.0"
 flask = "3.1.2"
 pytz = "2024.2"
 pyyaml = "6.0.2"
-mlflow = "3.0.0"
+mlflow = "3.8.1"
 waitress = "3.0.2"
+psutil = "6.1.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "8.4.2"
