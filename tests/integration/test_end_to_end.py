@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from ml_monitoring_service.anomaly_detector import AnomalyDetector
-from ml_monitoring_service.configuration import ConfigLoader
+from ml_monitoring_service.configuration import ConfigLoader, ServiceSetConfig
 from ml_monitoring_service.data_handling import convert_to_model_input
 
 pytestmark = pytest.mark.integration
@@ -66,12 +66,25 @@ def test_end_to_end_pipeline():
     num_features = 6
     window_size = 10
 
-    class TestConfig:
-        def __init__(self):
-            self.window_size = window_size
-            self.services = services
-
-    config = TestConfig()
+    # Create a minimal ServiceSetConfig for testing
+    config = ServiceSetConfig(
+        relationships={
+            "service_a": ["service_b"],
+            "service_b": ["service_c"],
+            "service_c": [],
+        },
+        metrics=[
+            "cpu_usage",
+            "memory_usage",
+            "request_count",
+            "error_count",
+            "response_time",
+        ],
+        training_lookback_hours=1,
+        inference_lookback_minutes=10,
+        window_size=window_size,
+        anomaly_threshold_percentile=99.0,
+    )
 
     # Create detector
     detector = AnomalyDetector(
@@ -92,7 +105,7 @@ def test_end_to_end_pipeline():
     # Test detection
     data_array = np.random.rand(window_size, 3, 6)
     timestamps = pd.date_range(start="2023-01-02", periods=window_size, freq="min")
-    result = detector.detect(data_array, timestamps[0].isoformat())
+    result = detector.detect(data_array, timestamps.to_numpy())
 
     # Verify result structure
     assert "is_anomaly" in result
@@ -107,12 +120,25 @@ def test_model_save_and_load(tmp_path):
     num_features = 6
     window_size = 10
 
-    class TestConfig:
-        def __init__(self):
-            self.window_size = window_size
-            self.services = services
-
-    config = TestConfig()
+    # Create a minimal ServiceSetConfig for testing
+    config = ServiceSetConfig(
+        relationships={
+            "service_a": ["service_b"],
+            "service_b": ["service_c"],
+            "service_c": [],
+        },
+        metrics=[
+            "cpu_usage",
+            "memory_usage",
+            "request_count",
+            "error_count",
+            "response_time",
+        ],
+        training_lookback_hours=1,
+        inference_lookback_minutes=10,
+        window_size=window_size,
+        anomaly_threshold_percentile=99.0,
+    )
 
     # Create and save detector
     detector1 = AnomalyDetector(
