@@ -634,7 +634,7 @@ def _write_index_html(cfg: ModelDiagramConfig, out_dir: Path) -> None:
     )
     cross_expl = (
         "At a fixed timestamp t, each service embedding is treated like a token. "
-        "Multi-head attention allows every service to pay attention to (and thereby be influenced by) every other service (capturing cross-service correlations). "
+        "Multi-head self-attention lets each service’s numerical representation be influenced by other services by ‘attending’ to their representations, enabling the model to capture cross-service relationships."
         "Different heads can learn different interaction patterns, then outputs are concatenated and projected back to [S,H]."
     )
 
