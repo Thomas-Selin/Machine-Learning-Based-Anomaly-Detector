@@ -60,6 +60,7 @@ handler.setFormatter(
 )
 logging.basicConfig(level=getattr(logging, LOG_LEVEL), handlers=[handler])
 logger = logging.getLogger(__name__)
+mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
 
 def safe_download_splunk_data(mode: str, active_set: str, age: str | None) -> None:

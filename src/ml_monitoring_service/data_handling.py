@@ -271,7 +271,12 @@ def convert_to_model_input(
 
     working_df = original_df
     if approach == "grid":
-        working_df["timestamp"] = working_df["timestamp"].dt.floor(effective_freq)
+        # Make the dtype explicit for type-checkers and for robustness when fixtures
+        # contain mixed/str timestamps.
+        working_df = working_df.copy()
+        working_df["timestamp"] = pd.to_datetime(
+            working_df["timestamp"], format="mixed", errors="coerce"
+        ).dt.floor(effective_freq)
 
     # Keep only relevant columns for aggregation/alignment.
     keep_cols = ["timestamp", "service"] + features

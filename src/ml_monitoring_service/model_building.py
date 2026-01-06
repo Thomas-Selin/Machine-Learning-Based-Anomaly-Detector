@@ -10,6 +10,7 @@ from ml_monitoring_service.constants import (
     DATA_APPROACH,
     DOWNLOAD_ENABLED,
     MAX_EPOCHS,
+    MLFLOW_EXPERIMENT_NAME,
     Colors,
 )
 from ml_monitoring_service.data_gathering.combine import combine_services
@@ -45,8 +46,9 @@ def create_and_train_model(active_set: str) -> AnomalyDetector | None:
             f"\n⏱️  MODEL CREATION PROCESS STARTED FOR SERVICE SET: {active_set}. TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
     )
-
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
     run_name = f"Model training: {active_set}-microservice-set"
+
     with mlflow.start_run(run_name=run_name, log_system_metrics=True):
         try:
             if DOWNLOAD_ENABLED:

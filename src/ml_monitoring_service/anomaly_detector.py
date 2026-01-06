@@ -11,6 +11,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 import ml_monitoring_service.configuration as conf
+from ml_monitoring_service.constants import MLFLOW_EXPERIMENT_NAME
 from ml_monitoring_service.data_handling import ServiceMetricsDataset
 from ml_monitoring_service.model import HybridAutoencoderTransformerModel
 
@@ -111,6 +112,7 @@ class AnomalyDetector:
 
         run_ctx = nullcontext()
         if mlflow.active_run() is None:
+            mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
             run_ctx = mlflow.start_run(
                 run_name=f"Model training: {active_set}-microservice-set",
                 log_system_metrics=True,
@@ -211,7 +213,8 @@ class AnomalyDetector:
                         out_dir=out_dir,
                     )
                     mlflow.log_artifacts(
-                        str(out_dir), artifact_path="model/architecture/diagrams"
+                        str(out_dir),
+                        artifact_path="model/architecture/documentation_and_architecture_diagrams",
                     )
                     mlflow.set_tag("model.architecture_diagrams", "true")
             except Exception as e:

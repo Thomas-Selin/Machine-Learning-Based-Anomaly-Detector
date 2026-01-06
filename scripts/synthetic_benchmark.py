@@ -306,7 +306,7 @@ def run_variant(
     detector.train(
         train_data,
         val_data,
-        df=None,
+        df=df,
         active_set=active_set,
         max_epochs=max_epochs,
         timepoints=timepoints[:val_end],
